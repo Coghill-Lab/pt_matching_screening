@@ -1,0 +1,372 @@
+---
+title: "HIV Matching"
+author: "Coghill Lab"
+date: "`r format(Sys.Date(), format = '%m-%d-%Y')`"
+params:
+  data:
+    label: "Input dataset:"
+    value: "10.2.23 to 10.6.23.csv"
+    input: text
+  location: 
+    label: "Relevant Clinic Location"
+    value: "GI Clinic"
+  age_start: 
+    label: "Starting Age:"
+    value: 55
+  age_stop: 
+    label: "Stopping Age:"
+    value: 65
+  race:
+    label: "Race filter:"
+    value: NULL
+    input: select
+    choices: ["American Indian, Aleutian, or Eskimo",
+              "Asian Indian, Pakistani",
+              "Black",
+              "Chamorran",
+              "Chinese",
+              "Filipino",
+              "Hawaiian",
+              "Japanese",
+              "Kampuchean (including Khmer, Cambodian)",
+              "Korean",
+              "More Than One Race",
+              "Other",
+              "Other Asian including Asian and Oriental",
+              "Pacific Islander",
+              "Thai",
+              "Tongan",
+              "Unknown",
+              "Vietnamese",
+              "White"]
+    multiple: true
+  ethnicity:
+    label: "Ethnicity filter:"
+    value: NULL
+    input: select
+    choices: ["Spanish; Hispanic", "Non-Spanish; non-Hispanic"]
+  gender:
+    label: "Gender filter:"
+    value: NULL
+    input: select
+    choices: [Male, Female]
+  vtype:
+    label: "Visit Type filter:"
+    value: NULL
+    input: select
+    choices: ["NP", "NEP"]
+    multiple: true
+  key_term_daig_in:
+    label: "Diagnosis Key Term Inclusion:"
+    value: NULL
+    input: text
+  key_term_daig_ex:
+    label: "Diagnosis Key Term Exclusion:"
+    value: NULL
+    input: text
+  key_term_notes_in:
+    label: "Notes Key Term Inclusion:"
+    value: NULL
+    input: text
+  key_term_notes_ex:
+    label: "Notes Key Term Exclusion:"
+    value: NULL
+    input: text
+  dxdate_start: 
+    label: "Starting Dx Date:"
+    value: NULL
+    input: date
+  dxdate_stop: 
+    label: "Stopping Dx Date:"
+    value: NULL
+    input: date
+  out_file_mrn:
+    label: "MRN for exported data file:"
+    value: "12345"
+    input: text
+  print_code: true
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+    theme: flatly
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = params$print_code,
+                      message = FALSE,
+                      # results = "hide",
+                      warning = FALSE,
+                      comment = "",
+                      fig.align='center'
+                      )
+```
+
+
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(readxl)
+library(reactable)
+# library(epoxy)
+```
+
+
+## Read data
+
+**File:** `r glue::glue("_{params$data}_")`
+
+
+```{r}
+dat <- 
+  read_csv(
+    here("Data", params$data),
+    skip = 3,
+  ) %>% 
+  ## need to remove extra "tables" at the end of the file
+  filter(STATUS %in% c("CONFIRMED", "RESCHEDULED"))
+  # filter(!is.na(STATUS)) ## Assuming `STATUS` is never missing
+  
+```
+
+
+
+## Apply filters
+
+
+```{r}
+## create a tibble of parameters selected for the report
+params_tbl <- tribble(
+  ~ "Parameter",                 ~"Value",
+  "Relevant Clinic Location",     as.character(params$location),
+  "Starting Age",                 as.character(params$age_start),
+  "Stopping Age",                 as.character(params$age_stop),
+  "Race filter",                  as.character(params$race),
+  "Ethnicity filter",             as.character(params$ethnicity),
+  "Gender filter",                as.character(params$gender),
+  "Visit Type filter",            as.character(params$vtype),
+  "Diagnosis Key Term Inculsion", as.character(params$key_term_daig_in),
+  "Diagnosis Key Term Exclusion", as.character(params$key_term_daig_ex),
+  "Starting Dx Date",                 as.character(params$dxdate_start),
+  "Stopping Dx Date",                 as.character(params$dxdate_stop),
+  "Notes Key Term Inculsion", as.character(params$key_term_notes_in),
+  "Notes Key Term Exclusion", as.character(params$key_term_notes_ex),
+) %>% 
+  unnest(Value)
+```
+
+```{r}
+## print out parameters selected in a nice table
+params_tbl %>% 
+  gt::gt()
+```
+
+```{r}
+## create a vector of variable names to select for final data set.
+Variable_Name <- 
+  c("LOCATION",
+    "MRN",
+    "PT_LAST_NAME",
+    "PT_FIRST_NAME",
+    "DIAGNOSIS",
+    "DIAGNOSIS_DATE",
+    "AGE",
+    "DOB",
+    "PT_GENDER",
+    "PT_RACE",
+    "PT_ETHNICITY",
+    "PRIMARY_LANGUAGE",
+    "Textbox62",
+    "Textbox41",
+    "Textbox38",
+    "APPTDTTM",
+    "RESOURCE",
+    "VTYPE",
+    "NOTES",
+    "HIV")
+```
+
+
+```{r general_filters}
+dat_filtered <- 
+  dat %>% 
+  select(any_of(Variable_Name)) %>% 
+  ## Include relevant clinic 
+  filter(LOCATION %in% params$location) %>%
+  ## appointment dates
+  ## Include only HIV-negative patients
+  filter(HIV == "No") %>% 
+  ## Exclude TCC Declined or Withdrawn 
+  filter(!Textbox41 %in% c("Declined", "Withdraw")) %>% 
+  ## Include only English or Spanish language 
+  filter(PRIMARY_LANGUAGE %in% c("English", "Spanish")) %>% 
+  ## Restrict to only desired age range
+  filter(between(AGE, params$age_start, params$age_stop)) %>% 
+  ## Remove duplicate MRN records that are identical (probably very few)
+  distinct() %>% 
+  ## Remove duplicate MRN records - retain earliest appointment
+  mutate(
+    APPTDTTM = as.POSIXlt(APPTDTTM, format = "%m/%d/%Y %H:%M"),
+    DIAGNOSIS_DATE = as.Date(DIAGNOSIS_DATE, format = "%m/%d/%Y")
+  ) %>% 
+  slice_min(
+    order_by = APPTDTTM,
+    n = 1,
+    by = MRN,
+    with_ties = FALSE
+  ) %>% 
+  ## sort alphabetically by last name then first name
+  arrange(PT_LAST_NAME, PT_FIRST_NAME)
+```
+
+```{r race_filter}
+## conditional filter for race (if selected)
+if (!is.null(params$race)) {
+  cat("Race filter:", as.character(params$race))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    filter(PT_RACE %in% params$race)
+}
+```
+
+
+
+```{r ethnicity_filter}
+## conditional filter for ethnicity (if selected)
+if (!is.null(params$ethnicity)) {
+  cat("Ethnicity filter:", as.character(params$ethnicity))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    filter(PT_ETHNICITY %in% params$ethnicity)
+}
+```
+
+
+
+```{r gender_filter}
+## conditional filter for gender (if selected)
+if (!is.null(params$gender)) {
+  cat("Gender filter:", as.character(params$gender))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    filter(PT_GENDER %in% params$gender)
+}
+```
+
+
+
+```{r vtype_filter}
+## conditional filter for visit type (if selected)
+if (!is.null(params$vtype)) {
+  cat("Visit Type filter:", as.character(params$vtype))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    filter(VTYPE %in% params$vtype)
+}
+```
+
+
+
+
+
+```{r key_term_daig_in_filter}
+## conditional filter for key word to *include* in DIAGNOSIS field (if selected)
+if (!is.null(params$key_term_daig_in)) {
+  cat("Diagnosis Key Term Inculsion filter:", as.character(params$key_term_daig_in))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    filter(str_detect(DIAGNOSIS, params$key_term_daig_in))
+}
+```
+
+```{r key_term_daig_ex_filter}
+## conditional filter for key word to *exclude* in DIAGNOSIS field (if selected)
+if (!is.null(params$key_term_daig_ex)) {
+  cat("Diagnosis Key Term Exculsion filter:", as.character(params$key_term_daig_ex))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    filter(str_detect(DIAGNOSIS, params$key_term_daig_ex, negate = TRUE))
+}
+```
+
+
+
+```{r key_term_notes_in_filter}
+## conditional filter for key word to *include* in NOTES field (if selected)
+if (!is.null(params$key_term_notes_in)) {
+  cat("Notes Key Term Inculsion filter:", as.character(params$key_term_notes_in))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    filter(str_detect(NOTES, params$key_term_notes_in))
+}
+```
+
+```{r key_term_notes_ex_filter}
+## conditional filter for key word to *exclude* in NOTES field (if selected)
+if (!is.null(params$key_term_notes_ex)) {
+  cat("Notes Key Term Exculsion filter:", as.character(params$key_term_notes_ex))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    filter(str_detect(NOTES, params$key_term_notes_ex, negate = TRUE))
+}
+```
+
+
+
+```{r dx_date_range_filter}
+if (!is.null(params$dxdate_start) & !is.null(params$dxdate_stop)) {
+  cat("Diagnosis Date Range filter:", as.character(params$dxdate_start), "-", as.character(params$dxdate_stop))
+  
+  dat_filtered <- 
+    dat_filtered %>% 
+    ## Restrict to only desired age range
+    filter(between(DIAGNOSIS_DATE, as.Date(params$dxdate_start), as.Date(params$dxdate_stop)))
+}
+```
+
+
+
+
+```{r reactable_table}
+dat_filtered %>% 
+  select(any_of(Variable_Name)) %>% 
+  arrange(PT_LAST_NAME) %>% 
+  reactable::reactable(
+    sortable = TRUE,
+    filterable = TRUE,
+    compact = TRUE,
+    resizable = TRUE
+  )
+```
+
+
+## Write to file
+
+```{r prep_file_name}
+## remove file suffix from input file name
+date_range <- str_remove(params$data, "\\.csv|\\.xlsx")
+
+## create final file name
+out_file_name <- paste0("MRN-", params$out_file_mrn, "_", date_range, ".csv")
+```
+
+
+**File name:** *`r out_file_name`*
+
+```{r write_csv}
+write_csv(dat_filtered, here("Matches", out_file_name))
+```
+
