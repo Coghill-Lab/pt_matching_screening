@@ -1,0 +1,123 @@
+---
+title: "Weekly Screening"
+date: "2024-12-12"
+params:
+  data:
+    label: "Input dataset:"
+    value: "Simulated Screening Report- TCC  12.09.24 to 12.13.24.xlsx"
+    input: text
+  vtype:
+    label: "Visit Type filter:"
+    value: "EP"
+    input: select
+    choices: ["NP", "NEP", "EP"]
+    multiple: true
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(readxl)
+library(reactable)
+```
+
+```{r}
+dat <- 
+  read_xlsx(
+    here("Data", params$data),
+    skip = 2,
+    sheet = "Details"
+  ) %>% 
+  clean_names()
+```
+
+```{r}
+## there are multiple columns named status
+## we need to rename the variables so they are *not* dependent on column position
+# dat %>% select(starts_with("status"))
+
+status_cols <- grep("^status", names(dat), ignore.case = TRUE)
+
+# Rename status columns in sequence
+if (length(status_cols) >= 1) {
+  names(dat)[status_cols[1]] <- "status_1"
+}
+if (length(status_cols) >= 2) {
+  names(dat)[status_cols[2]] <- "status_2"
+}
+```
+
+
+```{r}
+known_neg <- 
+  read_xlsx(
+    here("Data", params$data),
+    # skip = 2,
+    sheet = "Known Negatives"
+  ) %>% 
+  clean_names()
+```
+
+```{r}
+variables_keep <- 
+  c(
+     "MRN" = "mrn",
+     "Location" = "location",
+     "PT Last Name" = "pt_last_name",
+     "PT First Name" = "pt_first_name",
+     "Gender" = "gender", # (Recode variable for REDCap import)",
+     "Race" = "race", # (Recode variable for REDCap import)",
+     "Ethnicity" = "ethnicity", # (Recode variable for REDCap import)",
+     "TCC ICF Version" = "tcc_icf_version",
+     "TCC Consent Status" = "tcc_consent_status",
+     "Sequence Number" = "sequence_number",
+     "Status" = "status_1", # which one?
+     "Primary Lang" = "primary_lang", # (Recode variable for REDCap import)",
+     "Date/Time" = "date_time", # of Appt",
+     "VisitType" = "visit_type",
+     "Resource" = "resource",
+     "Diagnosis" = "diagnosis"
+
+  )
+```
+
+
+```{r general_filters}
+dat_filtered_hiv <- 
+  dat %>% 
+  ## rename duplicated `status` variables. The appended 11 and 13 are likely to change
+  # rename_with()
+  filter(hiv_diagnosis_present == "Yes") %>% 
+  ## remove known negative patients flagged as positive
+  filter(!mrn %in% c(known_neg$mrn)) %>%
+  select(all_of(unname(variables_keep))) 
+  # reactable()
+  # rename(all_of(variables_keep))
+  # count(mrn)
+```
+
+
+
+```{r vtype_filter}
+## conditional filter for visit type (if selected)
+## muitiselect and update from uploaded data
+if (!is.null(params$vtype)) {
+  cat("Visit Type filter:", as.character(params$vtype))
+  
+  dat_filtered_hiv <- 
+    dat_filtered_hiv %>% 
+    filter(visit_type %in% params$vtype)
+}
+```
+
+
+```{r}
+
+```
+
