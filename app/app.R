@@ -25,10 +25,32 @@ ui <-
                                     shiny::sidebarLayout(
                                       shiny::sidebarPanel(
                                         width = 3,
-                                        shiny::fileInput("input_file_upload","Upload Input Data")
+                                        h4("Load Input Data"),
+                                        shiny::fileInput("input_file_upload","Upload Input Data"),
+                                        conditionalPanel(condition = "input.screening_panel == '1'",
+                                                         hr(),
+                                                         h4("Filter Patients")
+                                                         # Filters
+                                                         )
                                       ),
                                       shiny::mainPanel(
-                                        DT::dataTableOutput("input_table_for_screening")
+                                        shiny::tabsetPanel(id = "screening_panel",
+                                                           tabPanel("Input Data",
+                                                                    p(),
+                                                                    DT::dataTableOutput("input_table_for_screening"),
+                                                                    value = 1
+                                                                    ),
+                                                           tabPanel("HIV Positive Patients",
+                                                                    p(),
+                                                                    DT::dataTableOutput("input_hivpos_table_for_screening"),
+                                                                    value = 2
+                                                                    ),
+                                                           tabPanel("HIV Negative Patients",
+                                                                    p(),
+                                                                    DT::dataTableOutput("input_hivneg_table_for_screening"),
+                                                                    value = 3
+                                                                    )
+                                                           )
                                       )
                                     )
                     ),
@@ -37,14 +59,45 @@ ui <-
                                     shiny::sidebarLayout(
                                       shiny::sidebarPanel(
                                         width = 3,
-                                        selectizeInput("hivpos_pat_to_match","Select HIV Positive Patient to Find Match:", choices = NULL, selected = 1)
+                                        conditionalPanel(condition = "input.matching_panel == '1'",
+                                                         h4("Select Patient to Match"),
+                                                         selectizeInput("hivpos_pat_to_match","Select HIV Positive Patient to Find Match:", choices = NULL, selected = 1),
+                                                         hr(),
+                                                         h4("Filter Matches"),
+                                                         # Filters
+                                                         hr(),
+                                                         actionButton("SavePatientMatch","Save Match", width = "100%")
+                                                         ),
+                                        conditionalPanel(condition = "input.matching_panel == '2'",
+                                                         # Exporting data
+                                                         )
                                       ),
                                       shiny::mainPanel(
-                                        h3(tags$b("HIV Positive Patient to Match")),
-                                        DT::dataTableOutput("HIV_Pos_table_for_matching"),
-                                        hr(),
-                                        h3(tags$b("HIV Negative Patients for Matching")),
-                                        DT::dataTableOutput("HIV_Neg_table_for_matching")
+                                        shiny::tabsetPanel(id = "matching_panel",
+                                                           tabPanel("Find Matches",
+                                                                    p(),
+                                                                    h3(tags$b("HIV Positive Patient to Match")),
+                                                                    DT::dataTableOutput("HIV_Pos_table_for_matching"),
+                                                                    hr(),
+                                                                    h3(tags$b("HIV Negative Patients for Matching")),
+                                                                    DT::dataTableOutput("HIV_Neg_table_for_matching"),
+                                                                    value = 1
+                                                                    ),
+                                                           tabPanel("Review Matches",
+                                                                    p(),
+                                                                    fluidRow(
+                                                                      column(6,
+                                                                             h3(tags$b("HIV Positive Patients")),
+                                                                             DT::dataTableOutput("HIV_Pos_table_match_review")
+                                                                             ),
+                                                                      column(6,
+                                                                             h3(tags$b("HIV Negative Patients")),
+                                                                             DT::dataTableOutput("HIV_Neg_table_match_review")
+                                                                             )
+                                                                    ),
+                                                                    value = 2
+                                                                    )
+                                                           )
                                       )
                                     )
                     ),
@@ -147,6 +200,38 @@ server <- function(input, output, session) {
                   rownames = F
     )
   })
+  # Display input hiv positive file
+  output$input_hivpos_table_for_screening <- DT::renderDataTable({
+    req(input_df_hivpos())
+    df <- input_df_hivpos()
+    DT::datatable(df,
+                  escape = F,
+                  class = "display nowrap",
+                  extensions = 'ColReorder',
+                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
+                                 pageLength = 20,
+                                 scrollX = T,
+                                 target = "cell",
+                                 colReorder = TRUE),
+                  rownames = F
+    )
+  })
+  # Display input hiv negative file
+  output$input_hivneg_table_for_screening <- DT::renderDataTable({
+    req(input_df_hivneg())
+    df <- input_df_hivneg()
+    DT::datatable(df,
+                  escape = F,
+                  class = "display nowrap",
+                  extensions = 'ColReorder',
+                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
+                                 pageLength = 20,
+                                 scrollX = T,
+                                 target = "cell",
+                                 colReorder = TRUE),
+                  rownames = F
+    )
+  })
   
   # Update HIV Neg list with new negatives - from filters to be added
   new_neg_df <- reactive({
@@ -158,6 +243,8 @@ server <- function(input, output, session) {
   })
   
   ## Matching ------------------------------------------------------------------
+  
+  ### Find Matches -------------------------------------------------------------
   
   # Update HIV Pos MRNs that will be matched
   observe({
@@ -188,8 +275,9 @@ server <- function(input, output, session) {
                   escape = F,
                   class = "display nowrap",
                   extensions = 'ColReorder',
-                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
-                                 pageLength = 20,
+                  options = list(paging = FALSE,
+                                 info = FALSE,
+                                 searching = FALSE,
                                  scrollX = T,
                                  target = "cell",
                                  colReorder = TRUE),
@@ -213,6 +301,9 @@ server <- function(input, output, session) {
                   rownames = F
     )
   })
+  
+  
+  ### Review Matches -----------------------------------------------------------
   
   
   ## Recognition ---------------------------------------------------------------
