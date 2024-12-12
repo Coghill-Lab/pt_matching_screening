@@ -16,9 +16,9 @@ ui <-
                     id = "navbar_id",
                     theme = bslib::bs_theme(bootswatch = "yeti"),
                     ## Homepage ------------------------------------------------
-                    shiny::tabPanel("Homepage",
-                                    # Explain SMART acronym what it can be used for - any logos
-                    ),
+                    #shiny::tabPanel("Homepage",
+                    #                # Explain SMART acronym what it can be used for - any logos
+                    #),
                     ## Screening -----------------------------------------------
                     shiny::tabPanel("Screening",
                                     shiny::sidebarLayout(
@@ -338,6 +338,30 @@ server <- function(input, output, session) {
     updateSelectizeInput(session,"match_gender", choices = unique(df[,gender_col_pred]), selected = NULL, server = T)
     updateSelectizeInput(session,"match_vtype", choices = unique(df[,visit_col_pred]), selected = NULL, server = T)
     
+  })
+  
+  observe({
+    print(input$match_data_range)
+    print(input$match_diag_data_range)
+  })
+  
+  filters_react <- reactive({
+    list(hiv_pos_mrn = input$hivpos_pat_to_match,
+         location = input$match_clinic,
+         appt_range_one = input$match_data_range[1],
+         appt_range_two = input$match_data_range[2],
+         age_start = input$age_to_match-age_range,
+         age_stop = input$age_to_match+age_range,
+         race = input$match_race,
+         ethnicity = input$match_ethnicity,
+         gender = input$match_gender,
+         visit = input$match_vtype,
+         inc_diag_term = input$key_term_daig_in,
+         ex_diag_term = input$key_term_daig_ex,
+         inc_notes_term = input$key_term_notes_in,
+         ex_notes_term = input$key_term_notes_ex,
+         diag_range_one = input$match_diag_data_range[1],
+         diag_range_two = input$match_diag_data_range[2])
   })
   
   ### Find Matches -------------------------------------------------------------
