@@ -124,7 +124,14 @@ ui <-
 server <- function(input, output, session) {
   
   ## Reactive Vals -------------------------------------------------------------
-  backend_known_hivneg_file <- reactiveVal(Known_HIVNEG_File)
+  backend_known_hivneg_file <- reactiveVal(NULL)
+  observe({
+    if (file.exists(Known_HIVNEG_File)) {
+      backend_known_hivneg_file(Known_HIVNEG_File)
+    } else {
+      backend_known_hivneg_file(NULL)
+    }
+  })
   backend_hivneg_df <- reactiveVal(NULL)
   
   input_file <- reactiveVal(NULL)
@@ -278,11 +285,6 @@ server <- function(input, output, session) {
   
   ### Find Matches -------------------------------------------------------------
   
-  # Update HIV Pos MRNs that will be matched
-  #observe({
-  #  hiv_pos_mrn <- c("99091","99107","99125","99162") # temp testing code - will be from check box input on data table
-  #  output_hivpos_mrn(hiv_pos_mrn)
-  #})
   observe({
     #req(output_hivpos_mrn())
     req(input$mrn_column)
