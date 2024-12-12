@@ -4,9 +4,8 @@ version_id <- paste0("v0.0.9")
 
 # Back end input ---------------------------------------------------------------
 
-Confirmed_Known_HIVNEG_File <- ""
+Known_HIVNEG_File <- "data/TCC_Screening_KnownHIVNegatives_20241212.csv"
 
-Existing_Known_HIVNEG_File <- "data/10.2.23 to 10.6.23_HIVNEG.csv"
 
 
 
@@ -29,7 +28,9 @@ ui <-
                                         shiny::fileInput("input_file_upload","Upload Input Data"),
                                         conditionalPanel(condition = "input.screening_panel == '1'",
                                                          hr(),
-                                                         h4("Filter Patients")
+                                                         h4("Filter Patients"),
+                                                         selectizeInput("mrn_column","MRN Column:", choices = NULL, selected = 1),
+                                                         selectizeInput("hiv_present_column","HIV Indicator Column:", choices = NULL, selected = 1)
                                                          # Filters
                                                          )
                                       ),
@@ -123,34 +124,29 @@ ui <-
 server <- function(input, output, session) {
   
   ## Reactive Vals -------------------------------------------------------------
-  input_file <- reactiveVal(NULL)
-  backend_hivneg_file <- reactiveVal(Existing_Known_HIVNEG_File)
-  backend_known_hivneg_file <- reactiveVal(Confirmed_Known_HIVNEG_File)
+  backend_known_hivneg_file <- reactiveVal(Known_HIVNEG_File)
+  backend_hivneg_df <- reactiveVal(NULL)
   
+  input_file <- reactiveVal(NULL)
   input_df <- reactiveVal(NULL)
   input_df_hivpos <- reactiveVal(NULL)
   input_df_hivneg <- reactiveVal(NULL)
   
-  backend_hivneg_df <- reactiveVal(NULL)
-  backend_hivneg_mrn <- reactiveVal(NULL)
+  output_hivpos_df <- reactiveVal(NULL)
+  output_hivneg_df <- reactiveVal(NULL)
   
-  input_hivpos_mrn <- reactiveVal(NULL)
-  input_hivneg_mrn <- reactiveVal(NULL)
-  
-  output_hivpos_mrn <- reactiveVal(NULL)
-  output_hivneg_mrn <- reactiveVal(NULL)
   hiv_matched_list <- reactiveVal(NULL)
   
-  # Read in existing HIV Neg csv file
+  # Read in know HIV Neg file
   observe({
-    req(backend_hivneg_file())
-    file <- backend_hivneg_file()
+    req(backend_known_hivneg_file())
+    file <- backend_known_hivneg_file()
     ext <- tools::file_ext(file)
     if (ext == "csv") {
-      df <- readr::read_csv(file) # might need to update depending on input format
+      df <- as.data.frame(readr::read_csv(file)) # might need to update depending on input format
       backend_hivneg_df(df)
     } else if (ext %in% c("xlsx","xls")) {
-      df <- readxl::excel_sheets(file)
+      df <- as.data.frame(readxl::excel_sheets(file))
       backend_hivneg_df(df)
     }
   })
@@ -171,23 +167,60 @@ server <- function(input, output, session) {
     file <- input_file()
     ext <- tools::file_ext(file)
     if (ext == "csv") {
-      df <- readr::read_csv(file, skip = 3) # might need to update depending on input format
+      df <- as.data.frame(readr::read_csv(file, skip = 3)) # might need to update depending on input format
       input_df(df)
     } else if (ext %in% c("xlsx","xls")) {
-      df <- readxl::excel_sheets(file)
+      df <- as.data.frame(readxl::read_excel(file, skip = 2)) # add skip row number input? or predict?
+      #df <- readxl::read_excel(file, col_names = F)
+      #df <- df[cumsum(complete.cases(df)) != 0, ]
+      #colnames(df) <- df[1,]
+      #df <- df[-1,]
       input_df(df)
+      mrn_col_pred <- grep("mrn",colnames(df),ignore.case = T, value = T)[1]
+      hiv_col_pred <- grep("hiv",colnames(df),ignore.case = T, value = T)[1]
+      updateSelectizeInput(session,"mrn_column", choices = colnames(df), selected = mrn_col_pred, server = T)
+      updateSelectizeInput(session,"hiv_present_column", choices = colnames(df), selected = hiv_col_pred, server = T)
     }
-    # Subset HIV pos and neg here?
-    df_pos <- df[which(df$HIV == "Yes"),]
-    df_neg <- df[which(df$HIV == "No"),]
+  })
+  
+  input_df_filtered <- reactive({
+    req(input_df())
+    df <- input_df()
+    
+    # apply filters
+    
+    df
+  })
+  
+  observe({
+    req(input_df_filtered())
+    req(input$hiv_present_column)
+    req(input$mrn_column)
+    df <- input_df_filtered()
+    hiv_col_pred <- input$hiv_present_column
+    known_hivneg <- backend_hivneg_df()
+    mrn_col <- input$mrn_column
+    
+    
+    # apply filters
+    
+    df_pos <- df[which(df[,hiv_col_pred] == "Yes"),]
+    df_neg <- df[which(df[,hiv_col_pred] == "No"),]
+    # remove known negatives
+    if (isTruthy(known_hivneg)) {
+      hivneg_mrns <- known_hivneg[,1]
+      df_pos_kn <- df_pos[which(df_pos[,mrn_col] %in% hivneg_mrns),]
+      df_neg <- rbind(df_neg,df_pos_kn)
+    }
+    
     input_df_hivpos(df_pos)
     input_df_hivneg(df_neg)
   })
   
   # Display input file
   output$input_table_for_screening <- DT::renderDataTable({
-    req(input_df())
-    df <- input_df()
+    req(input_df_filtered())
+    df <- input_df_filtered()
     DT::datatable(df,
                   escape = F,
                   class = "display nowrap",
@@ -233,37 +266,39 @@ server <- function(input, output, session) {
     )
   })
   
-  # Update HIV Neg list with new negatives - from filters to be added
-  new_neg_df <- reactive({
-    req(input_df_hivneg())
-    req(backend_hivneg_df())
-    df_list <- list(input_df_hivneg(),backend_hivneg_df())
-    new_neg_df <- data.table::rbindlist(df_list, fill = T) # Hopefully tables have same/similar columns?
-    new_neg_df
-  })
+  ## Update HIV Neg list with new negatives - from filters to be added
+  #new_neg_df <- reactive({
+  #  req(input_df_hivneg())
+  #  df_list <- list(input_df_hivneg(),backend_hivneg_df())
+  #  new_neg_df <- data.table::rbindlist(df_list, fill = T) # Hopefully tables have same/similar columns?
+  #  new_neg_df
+  #})
   
   ## Matching ------------------------------------------------------------------
   
   ### Find Matches -------------------------------------------------------------
   
   # Update HIV Pos MRNs that will be matched
+  #observe({
+  #  hiv_pos_mrn <- c("99091","99107","99125","99162") # temp testing code - will be from check box input on data table
+  #  output_hivpos_mrn(hiv_pos_mrn)
+  #})
   observe({
-    hiv_pos_mrn <- c("99091","99107","99125","99162") # temp testing code - will be from check box input on data table
-    output_hivpos_mrn(hiv_pos_mrn)
-  })
-  observe({
-    req(output_hivpos_mrn())
+    #req(output_hivpos_mrn())
+    req(input$mrn_column)
     req(input_df_hivpos())
-    hivpos_mrn <- output_hivpos_mrn()
+    df <- input_df_hivpos()
+    hivpos_mrn <- unique(df[,input$mrn_column])
     updateSelectizeInput(session,"hivpos_pat_to_match",choices = hivpos_mrn, selected = hivpos_mrn[1])
   })
   
   HIV_pos_df_patient_to_match <- reactive({
     req(input_df_hivpos())
     req(input$hivpos_pat_to_match)
+    req(input$mrn_column)
     df <- input_df_hivpos()
     patient_mrn <- input$hivpos_pat_to_match
-    df_mrn <- df[which(df$MRN == patient_mrn),]
+    df_mrn <- df[which(df[,input$mrn_column] == patient_mrn),]
     df_mrn
   })
   
@@ -287,8 +322,8 @@ server <- function(input, output, session) {
   
   # Display HIV neg table for matching patients
   output$HIV_Neg_table_for_matching <- DT::renderDataTable({
-    req(new_neg_df())
-    df <- new_neg_df()
+    req(input_df_hivneg())
+    df <- input_df_hivneg()
     DT::datatable(df,
                   escape = F,
                   class = "display nowrap",
