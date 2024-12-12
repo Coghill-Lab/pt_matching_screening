@@ -175,9 +175,13 @@ server <- function(input, output, session) {
     ext <- tools::file_ext(file)
     if (ext == "csv") {
       df <- as.data.frame(readr::read_csv(file, skip = 3)) # might need to update depending on input format
+      df <- df %>%
+        filter(STATUS %in% c("CONFIRMED", "RESCHEDULED"))
       input_df(df)
     } else if (ext %in% c("xlsx","xls")) {
       df <- as.data.frame(readxl::read_excel(file, skip = 2)) # add skip row number input? or predict?
+      df <- df %>%
+        filter(STATUS %in% c("CONFIRMED", "RESCHEDULED"))
       #df <- readxl::read_excel(file, col_names = F)
       #df <- df[cumsum(complete.cases(df)) != 0, ]
       #colnames(df) <- df[1,]
