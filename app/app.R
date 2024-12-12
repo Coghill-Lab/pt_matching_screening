@@ -29,6 +29,13 @@ ui <-
                                         conditionalPanel(condition = "input.screening_panel == '1'",
                                                          hr(),
                                                          h4("Filter Patients"),
+                                                         tags$head(
+                                                           tags$style(HTML('.selectize-input {
+                                                                max-height: 82px;
+                                                                overflow-y: auto;}'
+                                                           )
+                                                           )
+                                                         ),
                                                          selectizeInput("mrn_column","MRN Column:", choices = NULL, selected = 1),
                                                          selectizeInput("hiv_present_column","HIV Indicator Column:", choices = NULL, selected = 1)
                                                          # Filters
@@ -64,8 +71,35 @@ ui <-
                                                          h4("Select Patient to Match"),
                                                          selectizeInput("hivpos_pat_to_match","Select HIV Positive Patient to Find Match:", choices = NULL, selected = 1),
                                                          hr(),
-                                                         h4("Filter Matches"),
-                                                         # Filters
+                                                         h4("Filters"),
+                                                         dateRangeInput("match_data_range","Appointment Date Range:"),
+                                                         selectizeInput("match_clinic","Clinic Location:", choices = NULL, selected = NULL, multiple = TRUE),
+                                                         fluidRow(
+                                                           column(6,
+                                                                  numericInput("age_to_match","Age:",value = NULL),
+                                                                  selectizeInput("match_race","Race:", choices = NULL, selected = NULL, multiple = T),
+                                                                  selectizeInput("match_gender","Gender:", choices = NULL, selected = NULL, multiple = T)
+                                                                  ),
+                                                           column(6,
+                                                                  numericInput("age_range","+/- years:", value = NULL, min = 0, step = 1),
+                                                                  selectizeInput("match_ethnicity","Ethnicity:", choices = NULL, selected = NULL, multiple = T),
+                                                                  selectizeInput("match_vtype","Visit Type:", choices = NULL, selected = NULL, multiple = T)
+                                                                  )
+                                                         ),
+                                                         bslib::accordion(id = "term_filters", open = FALSE,
+                                                           bslib::accordion_panel("Term Filters",
+                                                                                  selectizeInput("key_term_daig_in", "Include Diagnosis Key Term", choices = NULL,
+                                                                                                 multiple = TRUE,options = list(create = TRUE)),
+                                                                                  selectizeInput("key_term_daig_ex", "Exclude Diagnosis Key Term", choices = NULL,
+                                                                                                 multiple = TRUE,options = list(create = TRUE)),
+                                                                                  selectizeInput("key_term_notes_in", "Include Notes Key Term", choices = NULL,
+                                                                                                 multiple = TRUE,options = list(create = TRUE)),
+                                                                                  selectizeInput("key_term_notes_ex", "Exclude Notes Key Term", choices = NULL,
+                                                                                                 multiple = TRUE,options = list(create = TRUE))
+                                                                                  )
+                                                           ),
+                                                         p(),
+                                                         dateRangeInput("match_diag_data_range","Diagnosis Date Range:"),
                                                          hr(),
                                                          actionButton("SavePatientMatch","Save Match", width = "100%")
                                                          ),
@@ -175,13 +209,13 @@ server <- function(input, output, session) {
     ext <- tools::file_ext(file)
     if (ext == "csv") {
       df <- as.data.frame(readr::read_csv(file, skip = 3)) # might need to update depending on input format
-      df <- df %>%
-        filter(STATUS %in% c("CONFIRMED", "RESCHEDULED"))
+      #df <- df %>%
+      #  filter(STATUS %in% c("CONFIRMED", "RESCHEDULED"))
       input_df(df)
     } else if (ext %in% c("xlsx","xls")) {
       df <- as.data.frame(readxl::read_excel(file, skip = 2)) # add skip row number input? or predict?
-      df <- df %>%
-        filter(STATUS %in% c("CONFIRMED", "RESCHEDULED"))
+      #df <- df %>%
+      #  filter(STATUS %in% c("CONFIRMED", "RESCHEDULED"))
       #df <- readxl::read_excel(file, col_names = F)
       #df <- df[cumsum(complete.cases(df)) != 0, ]
       #colnames(df) <- df[1,]
@@ -286,6 +320,25 @@ server <- function(input, output, session) {
   #})
   
   ## Matching ------------------------------------------------------------------
+  
+  ### Filter UI ----------------------------------------------------------------
+  
+  observe({
+    
+    req(input_df())
+    df <- input_df()
+    location_col_pred <- grep("location",colnames(df),ignore.case = T)
+    race_col_pred <- grep("race",colnames(df),ignore.case = T)
+    ethnicity_col_pred <- grep("ethnicity",colnames(df),ignore.case = T)
+    gender_col_pred <- grep("gender|sex",colnames(df),ignore.case = T)
+    visit_col_pred <- grep("visit",colnames(df),ignore.case = T)
+    updateSelectizeInput(session,"match_clinic", choices = unique(df[,location_col_pred]), selected = 1)
+    updateSelectizeInput(session,"match_race", choices = unique(df[,race_col_pred]), selected = NULL, server = T)
+    updateSelectizeInput(session,"match_ethnicity", choices = unique(df[,ethnicity_col_pred]), selected = NULL, server = T)
+    updateSelectizeInput(session,"match_gender", choices = unique(df[,gender_col_pred]), selected = NULL, server = T)
+    updateSelectizeInput(session,"match_vtype", choices = unique(df[,visit_col_pred]), selected = NULL, server = T)
+    
+  })
   
   ### Find Matches -------------------------------------------------------------
   
