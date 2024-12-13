@@ -12,15 +12,20 @@ Known_HIVNEG_File <- "data/TCC_Screening_KnownHIVNegatives_20241212.csv"
 # UI ---------------------------------------------------------------------------
 
 ui <-
-  shiny::navbarPage("{ SMART }",
+  shiny::navbarPage(span("{ SMART }", style = "color:white; font-weight:bold;"),
                     id = "navbar_id",
                     theme = bslib::bs_theme(bootswatch = "yeti"),
+                    tags$head(
+                      tags$link(rel = "stylesheet", type = "text/css", href = "styling.css")
+                    ),
                     ## Homepage ------------------------------------------------
                     #shiny::tabPanel("Homepage",
+                    #                 icon = icon("home")
                     #                # Explain SMART acronym what it can be used for - any logos
                     #),
                     ## Screening -----------------------------------------------
                     shiny::tabPanel("Screening",
+                                    icon = icon("search",lib = "font-awesome"),
                                     shiny::sidebarLayout(
                                       shiny::sidebarPanel(
                                         width = 3,
@@ -64,6 +69,7 @@ ui <-
                     ),
                     ## Matching ------------------------------------------------
                     shiny::tabPanel("Matching",
+                                    icon = icon("puzzle-piece"),
                                     shiny::sidebarLayout(
                                       shiny::sidebarPanel(
                                         width = 3,
@@ -71,10 +77,10 @@ ui <-
                                                          p(),
                                                          shiny::fileInput("matching_file_upload","Upload Matching Data"),
                                                          hr(),
-                                                         h4("Select Patient to Match"),
+                                                         h4("Select Patient to Match", style = "font-size: 22px; font-weight: bold;"),
                                                          selectizeInput("hivpos_pat_to_match","Select HIV Positive Patient to Find Match:", choices = NULL, selected = 1),
                                                          hr(),
-                                                         h4("Filters"),
+                                                         h4("Filters",style = "font-size: 20px;"),
                                                          dateRangeInput("match_data_range","Appointment Date Range:"),
                                                          selectizeInput("match_clinic","Clinic Location:", choices = NULL, selected = NULL, multiple = TRUE),
                                                          fluidRow(
@@ -84,7 +90,7 @@ ui <-
                                                                   selectizeInput("match_gender","Gender:", choices = NULL, selected = NULL, multiple = T)
                                                                   ),
                                                            column(6,
-                                                                  numericInput("age_range","+/- years:", value = NULL, min = 0, step = 1),
+                                                                  numericInput("age_range","+/- years:", value = 5, min = 0, step = 1),
                                                                   selectizeInput("match_ethnicity","Ethnicity:", choices = NULL, selected = NULL, multiple = T),
                                                                   selectizeInput("match_vtype","Visit Type:", choices = NULL, selected = NULL, multiple = T)
                                                                   )
@@ -114,10 +120,10 @@ ui <-
                                         shiny::tabsetPanel(id = "matching_panel",
                                                            tabPanel("Find Matches",
                                                                     p(),
-                                                                    h3(tags$b("HIV Positive Patient to Match")),
+                                                                    h3(tags$b("HIV Positive Patient to Match",style = "font-size: 22px;")),
                                                                     DT::dataTableOutput("HIV_Pos_table_for_matching"),
                                                                     hr(),
-                                                                    h3(tags$b("HIV Negative Patients for Matching")),
+                                                                    h3(tags$b("HIV Negative Patients for Matching",style = "font-size: 22px;")),
                                                                     DT::dataTableOutput("HIV_Neg_table_for_matching"),
                                                                     value = 1
                                                                     ),
@@ -125,11 +131,11 @@ ui <-
                                                                     p(),
                                                                     fluidRow(
                                                                       column(6,
-                                                                             h3(tags$b("HIV Positive Patients")),
+                                                                             h3(tags$b("HIV Positive Patients",style = "font-size: 20px;")),
                                                                              DT::dataTableOutput("HIV_Pos_table_match_review")
                                                                              ),
                                                                       column(6,
-                                                                             h3(tags$b("HIV Negative Patients")),
+                                                                             h3(tags$b("HIV Negative Patients",style = "font-size: 20px;")),
                                                                              DT::dataTableOutput("HIV_Neg_table_match_review")
                                                                              )
                                                                     ),
@@ -141,6 +147,7 @@ ui <-
                     ),
                     ## Recognition ---------------------------------------------
                     shiny::tabPanel("Recognition",
+                                    icon = icon("award"),
                                     shiny::sidebarLayout(
                                       shiny::sidebarPanel(
                                         width = 3,

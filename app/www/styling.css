@@ -1,0 +1,47 @@
+body {
+  margin: 0; /* Remove default browser margin */
+  border: 20px solid var(--bs-dark); /* Add a subtle border */
+  background-color: #f9f9f9; 
+  box-sizing: border-box;
+}
+.selectize-input {
+  border: 2px solid #264653;
+  border-radius: 4px;
+}
+#age_to_match {
+  border: 2px solid #264653;
+  border-radius: 4px;
+  padding: 5px; /* Add padding for a consistent look */
+  font-size: 14px; /* Adjust font size */
+}
+#age_range {
+  border: 2px solid #264653;
+  border-radius: 4px;
+  padding: 5px; /* Add padding for a consistent look */
+  font-size: 14px; /* Adjust font size */
+}
+.btn {
+  background-color: #e76f51;
+  color: white;
+  border-radius: 5px;
+}
+.btn:hover {
+  background-color: #d65b41;
+}
+table.dataTable {
+    background-color: #f8f9fa; /* Light gray background */
+    border: 1px solid #dee2e6; /* Border for the table */
+}
+table.dataTable th {
+    background-color: #6c757d; /* Dark gray background for headers */
+    color: white; /* White text for headers */
+    text-align: center;
+}
+table.dataTable td {
+    text-align: left; /* Left-align table cells */
+}
+.dataTables_wrapper .dataTables_filter input {
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 5px;
+}
