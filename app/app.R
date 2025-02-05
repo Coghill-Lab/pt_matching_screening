@@ -18,11 +18,13 @@ ui <-
                     tags$head(
                       tags$link(rel = "stylesheet", type = "text/css", href = "styling.css")
                     ),
+
                     ## Homepage ------------------------------------------------
                     #shiny::tabPanel("Homepage",
                     #                 icon = icon("home")
                     #                # Explain SMART acronym what it can be used for - any logos
                     #),
+
                     ## Screening -----------------------------------------------
                     shiny::tabPanel("Screening",
                                     icon = icon("search",lib = "font-awesome"),
@@ -31,6 +33,7 @@ ui <-
                                         width = 3,
                                         h4("Load Input Data"),
                                         shiny::fileInput("screening_file_upload","Upload Screening Data"),
+                                        shiny::fileInput("known_neg_file_upload","Upload Known HIV Negatives", placeholder = "Optional"),
                                         conditionalPanel(condition = "input.screening_panel == '1'",
                                                          hr(),
                                                          h4("Filter Patients"),
@@ -42,9 +45,14 @@ ui <-
                                                            )
                                                          ),
                                                          selectizeInput("mrn_column","MRN Column:", choices = NULL, selected = 1),
-                                                         selectizeInput("hiv_present_column","HIV Indicator Column:", choices = NULL, selected = 1)
-                                                         # Filters
-                                                         )
+                                                         selectizeInput("hiv_present_column","HIV Indicator Column:", choices = NULL, selected = 1),
+                                                         ),
+                                        conditionalPanel(condition = "input.screening_panel == '2'",
+                                                         p(),
+                                                         selectizeInput("screen_visit_type", "Visit Types:", choices = NULL, selected = NULL, multiple = TRUE),
+                                                         shinyWidgets::airDatepickerInput("screen_visit_date_range", label = "Select Visit Date Range:", 
+                                                                                          range = TRUE, clearButton = TRUE),
+                                                         verbatimTextOutput("checked_rows"))
                                       ),
                                       shiny::mainPanel(
                                         shiny::tabsetPanel(id = "screening_panel",
@@ -113,6 +121,7 @@ ui <-
                                                          actionButton("SavePatientMatch","Save Match", width = "100%")
                                                          ),
                                         conditionalPanel(condition = "input.matching_panel == '2'",
+                                                         downloadButton("dnlnd_data","Export data")
                                                          # Exporting data
                                                          )
                                       ),
@@ -123,8 +132,10 @@ ui <-
                                                                     h3(tags$b("HIV Positive Patient to Match",style = "font-size: 22px;")),
                                                                     DT::dataTableOutput("HIV_Pos_table_for_matching"),
                                                                     hr(),
-                                                                    h3(tags$b("HIV Negative Patients for Matching",style = "font-size: 22px;")),
-                                                                    DT::dataTableOutput("HIV_Neg_table_for_matching"),
+
+                                                                    h3(tags$b("HIV Negative Patients for Matching")),
+                                                                    reactableOutput("HIV_Neg_table_for_matching"),
+                                                                    #DT::dataTableOutput("HIV_Neg_table_for_matching"),
                                                                     value = 1
                                                                     ),
                                                            tabPanel("Review Matches",
@@ -151,13 +162,63 @@ ui <-
                                     shiny::sidebarLayout(
                                       shiny::sidebarPanel(
                                         width = 3,
-                                        
+                                        h4("Load Comment Data"),
+                                        shiny::fileInput("recognition_file_upload","Upload Comment Data"),
+                                        #conditionalPanel(condition = "input.screening_panel == '1'",
+                                        hr(),
+                                        h4("Filter Providers"),
+                                        tags$head(
+                                          tags$style(HTML('.selectize-input {
+                                                                max-height: 82px;
+                                                                overflow-y: auto;}'
+                                          )
+                                          )
+                                        ),
+                                        selectizeInput("provider_nm","Provider Name:", choices = NULL, selected = 1),
+                                        selectizeInput("npi_num","Provider NPI:", choices = NULL, selected = 1)
+                                        # Filters
+                                        # )
                                       ),
                                       shiny::mainPanel(
-                                        
+                                        shiny::tabsetPanel(id = "recognition_panel",
+                                                           tabPanel("Comment Data",
+                                                                    p(),
+                                                                    DT::dataTableOutput("commentdata"),
+                                                                    value = 1
+                                                           ),
+                                                           tabPanel("Provider Specific Comments",
+                                                                    p(),
+                                                                    DT::dataTableOutput("bigram_sentiment"),
+                                                                    value = 2
+                                                           ),
+                                                           tabPanel("All Comments",
+                                                                    p(),
+                                                                    DT::dataTableOutput("filter_npi"),
+                                                                    value = 3
+                                                           )
+                                        )
                                       )
                                     )
-                    )
+                    ),
+                    
+                    
+                    
+                    #shiny::tabPanel("Recognition",
+                    #                shiny::sidebarLayout(
+                    #                  shiny::sidebarPanel(
+                    #                    width = 3,
+                    #                    
+                    #                  ),
+                    #                  shiny::mainPanel(
+                    #                    
+                    #                  )
+                    #                )
+                    #),
+                    
+                    ## Homepage ------------------------------------------------
+                    shiny::tabPanel("About",
+                                    # Explain SMART acronym what it can be used for - any logos
+                    ),
   )
 
 
@@ -180,8 +241,6 @@ server <- function(input, output, session) {
   
   screen_file <- reactiveVal(NULL)
   screen_df <- reactiveVal(NULL)
-  screen_df_hivpos <- reactiveVal(NULL)
-  screen_df_hivneg <- reactiveVal(NULL)
   
   match_file <- reactiveVal()
   match_df <- reactiveVal()
@@ -190,6 +249,9 @@ server <- function(input, output, session) {
   output_hivneg_df <- reactiveVal(NULL)
   
   hiv_matched_list <- reactiveVal(NULL)
+  
+  comment_df <- reactiveVal(NULL)
+  comment_file <- reactiveVal(NULL)
   
   # Read in know HIV Neg file
   observe({
@@ -227,19 +289,14 @@ server <- function(input, output, session) {
       screen_df(df)
     } else if (ext %in% c("xlsx","xls")) {
       df <- as.data.frame(readxl::read_excel(file, skip = 2)) # add skip row number input? or predict?
-      #df <- df %>%
-      #  filter(STATUS %in% c("CONFIRMED", "RESCHEDULED"))
-      #df <- readxl::read_excel(file, col_names = F)
-      #df <- df[cumsum(complete.cases(df)) != 0, ]
-      #colnames(df) <- df[1,]
-      #df <- df[-1,]
       screen_df(df)
-      #save(list = ls(), file = "tesst.RData", envir = environment())
-      mrn_col_pred <- grep("mrn",colnames(df),ignore.case = T, value = T)[1]
-      hiv_col_pred <- grep("hiv",colnames(df),ignore.case = T, value = T)[1]
-      updateSelectizeInput(session,"mrn_column", choices = colnames(df), selected = mrn_col_pred, server = T)
-      updateSelectizeInput(session,"hiv_present_column", choices = colnames(df), selected = hiv_col_pred, server = T)
     }
+    mrn_col_pred <- grep("mrn",colnames(df),ignore.case = T, value = T)[1]
+    hiv_col_pred <- grep("hiv",colnames(df),ignore.case = T, value = T)[1]
+    visit_col_pred <- grep("visit|vtype",colnames(df),ignore.case = T)[1]
+    updateSelectizeInput(session,"mrn_column", choices = colnames(df), selected = mrn_col_pred, server = T)
+    updateSelectizeInput(session,"hiv_present_column", choices = colnames(df), selected = hiv_col_pred, server = T)
+    updateSelectizeInput(session,"screen_visit_type", choices = df[,visit_col_pred], selected = NULL, server = T)
   })
   
   screen_columns_id <- reactiveVal(list())
@@ -247,17 +304,18 @@ server <- function(input, output, session) {
   observe({
     req(screen_df())
     df <- screen_df()
-    location_col_pred <- grep("location",colnames(df),ignore.case = T)
-    appt_col_pred <- grep("APPTDTTM|appointment",colnames(df),ignore.case = T)
-    age_col_pred <- grep("age",colnames(df),ignore.case = T)
-    race_col_pred <- grep("race",colnames(df),ignore.case = T)
-    ethnicity_col_pred <- grep("ethnicity",colnames(df),ignore.case = T)
-    gender_col_pred <- grep("gender|sex",colnames(df),ignore.case = T)
-    visit_col_pred <- grep("visit|vtype",colnames(df),ignore.case = T)
-    diag_date_col_pred <- grep("DIAGNOSIS_DATE",colnames(df),ignore.case = T)
-    diag_notes_col_pred <- grep("DIAGNOSIS",colnames(df),ignore.case = T)
-    diag_notes_col_pred <- diag_notes_col_pred[which(diag_notes_col_pred!=diag_date_col_pred)]
-    notes_col_pred <- grep("NOTES",colnames(df),ignore.case = T)
+    location_col_pred <- grep("location",colnames(df),ignore.case = T, value = T)[1]
+    appt_col_pred <- grep("APPTDTTM|appointment",colnames(df),ignore.case = T, value = T)[1]
+    age_col_pred <- grep("age",colnames(df),ignore.case = T, value = T)
+    age_col_pred <- age_col_pred[grep("language",age_col_pred, ignore.case = T, value = T, invert = T)][1]
+    race_col_pred <- grep("race",colnames(df),ignore.case = T, value = T)[1]
+    ethnicity_col_pred <- grep("ethnicity",colnames(df),ignore.case = T, value = T)[1]
+    gender_col_pred <- grep("gender|sex",colnames(df),ignore.case = T, value = T)[1]
+    visit_col_pred <- grep("visit|vtype",colnames(df),ignore.case = T, value = T)[1]
+    diag_date_col_pred <- grep("DIAGNOSIS_DATE",colnames(df),ignore.case = T, value = T)[1]
+    diag_notes_col_pred <- grep("DIAGNOSIS",colnames(df),ignore.case = T, value = T)
+    diag_notes_col_pred <- diag_notes_col_pred[which(diag_notes_col_pred!=diag_date_col_pred)][1]
+    notes_col_pred <- grep("NOTES",colnames(df),ignore.case = T, value = T)[1]
     
     col_id_list <- list(
       clinic_col = location_col_pred,
@@ -275,27 +333,31 @@ server <- function(input, output, session) {
     screen_columns_id(col_id_list)
   })
   
-  screen_df_filtered <- reactive({
+  screen_df_hivpos <- reactive({
     req(screen_df())
-    df <- screen_df()
-    
-    # apply filters
-    
-    df
-  })
-  
-  observe({
-    req(screen_df_filtered())
     req(input$hiv_present_column)
     req(input$mrn_column)
-    df <- screen_df_filtered()
+    df <- screen_df()
     hiv_col_pred <- input$hiv_present_column
     known_hivneg <- backend_hivneg_df()
     mrn_col <- input$mrn_column
-    
-    
-    # apply filters
-    
+    df_pos <- df[which(df[,hiv_col_pred] == "Yes"),]
+    # remove known negatives
+    if (isTruthy(known_hivneg)) {
+      hivneg_mrns <- known_hivneg[,1]
+      df_pos_kn <- df_pos[which(df_pos[,mrn_col] %in% hivneg_mrns),]
+    }
+    df_pos <- df_pos %>% relocate(!!sym(mrn_col))
+    df_pos
+  })
+  screen_df_hivneg <- reactive({
+    req(screen_df())
+    req(input$hiv_present_column)
+    req(input$mrn_column)
+    df <- screen_df()
+    hiv_col_pred <- input$hiv_present_column
+    known_hivneg <- backend_hivneg_df()
+    mrn_col <- input$mrn_column
     df_pos <- df[which(df[,hiv_col_pred] == "Yes"),]
     df_neg <- df[which(df[,hiv_col_pred] == "No"),]
     # remove known negatives
@@ -304,15 +366,16 @@ server <- function(input, output, session) {
       df_pos_kn <- df_pos[which(df_pos[,mrn_col] %in% hivneg_mrns),]
       df_neg <- rbind(df_neg,df_pos_kn)
     }
-    
-    screen_df_hivpos(df_pos)
-    screen_df_hivneg(df_neg)
+    df_neg <- df_neg %>% relocate(!!sym(mrn_col))
+    df_neg
   })
+  
+  # tags$style(HTML('table.dataTable tr.selected td, table.dataTable td.selected {background-color: pink !important;}'))
   
   # Display input file
   output$screen_table_for_screening <- DT::renderDataTable({
-    req(screen_df_filtered())
-    df <- screen_df_filtered()
+    req(screen_df())
+    df <- screen_df()
     DT::datatable(df,
                   escape = F,
                   class = "display nowrap",
@@ -325,19 +388,32 @@ server <- function(input, output, session) {
                   rownames = F
     )
   })
+  
   # Display input hiv positive file
   output$screen_hivpos_table_for_screening <- DT::renderDataTable({
     req(screen_df_hivpos())
     df <- screen_df_hivpos()
+    df <- df %>%
+      mutate(Check = NA) %>%
+      relocate(Check)
     DT::datatable(df,
                   escape = F,
                   class = "display nowrap",
-                  extensions = 'ColReorder',
-                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
-                                 pageLength = 20,
-                                 scrollX = T,
-                                 target = "cell",
-                                 colReorder = TRUE),
+                  extensions = c('ColReorder', "Select"), #selection = "none",
+                  options = list(
+                    lengthMenu = c(5, 10, 20, 100, 1000),
+                    pageLength = 20,
+                    scrollX = T,
+                    target = "cell",
+                    colReorder = TRUE,
+                    # options for Select ext.
+                    columnDefs = list(
+                      list(targets = 0, orderable = FALSE, className = "select-checkbox")
+                    ),
+                    select = list(
+                      style = "multi", selector = "td:first-child",
+                      headerCheckbox = TRUE
+                    )), 
                   rownames = F
     )
   })
@@ -391,17 +467,18 @@ server <- function(input, output, session) {
   observe({
     req(match_df())
     df <- match_df()
-    location_col_pred <- grep("location",colnames(df),ignore.case = T)
-    appt_col_pred <- grep("APPTDTTM|appointment",colnames(df),ignore.case = T)
-    age_col_pred <- grep("age",colnames(df),ignore.case = T)
-    race_col_pred <- grep("race",colnames(df),ignore.case = T)
-    ethnicity_col_pred <- grep("ethnicity",colnames(df),ignore.case = T)
-    gender_col_pred <- grep("gender|sex",colnames(df),ignore.case = T)
-    visit_col_pred <- grep("visit|vtype",colnames(df),ignore.case = T)
-    diag_date_col_pred <- grep("DIAGNOSIS_DATE",colnames(df),ignore.case = T)
-    diag_notes_col_pred <- grep("DIAGNOSIS",colnames(df),ignore.case = T)
-    diag_notes_col_pred <- diag_notes_col_pred[which(diag_notes_col_pred!=diag_date_col_pred)]
-    notes_col_pred <- grep("NOTES",colnames(df),ignore.case = T)
+    location_col_pred <- grep("location",colnames(df),ignore.case = T, value = T)[1]
+    appt_col_pred <- grep("APPTDTTM|appointment",colnames(df),ignore.case = T, value = T)[1]
+    age_col_pred <- grep("age",colnames(df),ignore.case = T, value = T)
+    age_col_pred <- grep("language",age_col_pred, ignore.case = T, value = T, invert = T)[1]
+    race_col_pred <- grep("race",colnames(df),ignore.case = T, value = T)[1]
+    ethnicity_col_pred <- grep("ethnicity",colnames(df),ignore.case = T, value = T)[1]
+    gender_col_pred <- grep("gender|sex",colnames(df),ignore.case = T, value = T)[1]
+    visit_col_pred <- grep("visit|vtype",colnames(df),ignore.case = T, value = T)[1]
+    diag_date_col_pred <- grep("DIAGNOSIS_DATE",colnames(df),ignore.case = T, value = T)[1]
+    diag_notes_col_pred <- grep("DIAGNOSIS",colnames(df),ignore.case = T, value = T)
+    diag_notes_col_pred <- diag_notes_col_pred[which(diag_notes_col_pred!=diag_date_col_pred)][1]
+    notes_col_pred <- grep("NOTES",colnames(df),ignore.case = T, value = T)[1]
     
     col_id_list <- list(
       clinic_col = location_col_pred,
@@ -502,19 +579,23 @@ server <- function(input, output, session) {
     req(input$mrn_column)
     req(screen_df_hivpos())
     df <- screen_df_hivpos()
-    hivpos_mrn <- unique(df[,input$mrn_column])
+    hiv_pos_rowsSelected <- input$screen_hivpos_table_for_screening_rows_selected
+    df_sub <- df[hiv_pos_rowsSelected,]
+    hivpos_mrn <- unique(df_sub[,input$mrn_column])
     updateSelectizeInput(session,"hivpos_pat_to_match",choices = hivpos_mrn, selected = hivpos_mrn[1])
   })
   
-  # wil need to update for checkbox input table
+  # will need to update for checkbox input table
   HIV_pos_df_patient_to_match <- reactive({
     req(screen_df_hivpos())
     req(input$hivpos_pat_to_match)
     req(input$mrn_column)
     df <- screen_df_hivpos()
+    hiv_pos_rowsSelected <- input$screen_hivpos_table_for_screening_rows_selected
+    df_sub <- df[hiv_pos_rowsSelected,]
     patient_mrn <- input$hivpos_pat_to_match
-    df_mrn <- df[which(df[,input$mrn_column] == patient_mrn),]
-    df_mrn
+    df_sub_mrn <- df_sub[which(df_sub[,input$mrn_column] == patient_mrn),]
+    df_sub_mrn
   })
   
   # Display HIV pos table for patient being matched
@@ -536,68 +617,78 @@ server <- function(input, output, session) {
   })
 
   HIV_neg_df_filtered_to_match <- reactive({
-    req(match_df(),patient_filter_settings(),columns_id())
+    req(match_df(),patient_filter_settings(),match_columns_id(),input$hivpos_pat_to_match)
     df <- match_df()
-    col_id <- columns_id()
-    filter_list <- patient_filter_settings()
+    match_col_id <- match_columns_id()
+    filter_list <- patient_filter_settings()[[input$hivpos_pat_to_match]]
+    #save(list = ls(), file = "filtered_neg.RData", envir = environment())
     
-    df_filtered <- df %>%
+    dat_filtered <- df %>%
       mutate(
-        AGE = floor(!!sym(filter_list[["age_col"]])),  # Round down age
-        DIAGNOSIS_DATE = as.Date(parse_date_time(!!sym(filter_list[["diag_date_col"]]), orders = c("ymd", "mdy", "dmy"))),  # Convert to date
-        DOB = as.Date(DOB, format = "%m/%d/%y"),
-        DOB = ifelse(year(DOB) > 2024, DOB - years(100), DOB), # Adjust future years to the past
-        DOB = as.Date(DOB)
+        AGE = floor(!!sym(match_col_id[["age_col"]])),  # Round down age
+        DIAGNOSIS_DATE = as.Date(parse_date_time(!!sym(match_col_id[["diag_date_col"]]), orders = c("ymd", "mdy", "dmy"))),  # Convert to date
+        #DOB = as.Date(DOB, format = "%m/%d/%y"),
+        #DOB = ifelse(year(DOB) > 2024, DOB - years(100), DOB), # Adjust future years to the past
+        #DOB = as.Date(DOB)
       ) %>%
       filter(!is.na(DIAGNOSIS_DATE)) %>%
-      filter(LOCATION %in% input$location) %>%
+      filter(!!sym(match_col_id[["clinic_col"]]) %in% !!sym(match_col_id[["clinic_col"]])) %>%
       filter(HIV == "No") %>%
-      filter(!Textbox41 %in% c("Declined", "Withdraw")) %>%
-      filter(PRIMARY_LANGUAGE %in% c("English", "Spanish")) %>%
-      filter(between(AGE, input$age_start, input$age_stop)) %>%
+      filter(!Textbox41 %in% c("Declined", "Withdraw"))
+      #filter(PRIMARY_LANGUAGE %in% c("English", "Spanish")) %>%
+    if (!is.na(filter_list[["age_start"]]) & !is.na(filter_list[["age_stop"]])) {
+      dat_filtered <- dat_filtered %>%
+        filter(between(AGE, !!sym(filter_list[["age_start"]]), !!sym(filter_list[["age_stop"]])))
+    }
+    dat_filtered <- dat_filtered %>%
       distinct()
     
     # Conditional filters
-    if (!is.null(input$race)) {
-      dat_filtered <- dat_filtered %>%
-        filter(PT_RACE %in% input$race)
+    if (!is.null(filter_list[["race"]])) {
+      dat_filtered <- dat_filtered[which(dat_filtered[,match_col_id[["race_col"]]] %in% filter_list[["race"]]),]
+      #dat_filtered <- dat_filtered %>%
+      #  filter(!!sym(filter_list[["race"]]) %in% !!sym(input$match_race))
     }
-    if (!is.null(input$ethnicity)) {
-      dat_filtered <- dat_filtered %>%
-        filter(PT_ETHNICITY %in% input$ethnicity)
+    if (!is.null(filter_list[["ethnicity"]])) {
+      dat_filtered <- dat_filtered[which(dat_filtered[,match_col_id[["ethnicity_col"]]] %in% filter_list[["ethnicity"]]),]
+      #dat_filtered <- dat_filtered %>%
+      #  filter(!!sym(filter_list[["ethnicity"]]) %in% !!sym(input$match_ethnicity))
     }
-    if (!is.null(input$gender)) {
-      dat_filtered <- dat_filtered %>%
-        filter(PT_GENDER %in% input$gender)
+    if (!is.null(filter_list[["gender"]])) {
+      dat_filtered <- dat_filtered[which(dat_filtered[,match_col_id[["gender_col"]]] %in% filter_list[["gender"]]),]
+      #dat_filtered <- dat_filtered %>%
+      #  filter(!!sym(filter_list[["gender"]]) %in% !!sym(input$match_gender))
     }
-    if (!is.null(input$vtype)) {
-      dat_filtered <- dat_filtered %>%
-        filter(VTYPE %in% input$vtype)
+    if (!is.null(filter_list[["visit_type"]])) {
+      dat_filtered <- dat_filtered[which(dat_filtered[,match_col_id[["visit_col"]]] %in% filter_list[["visit_type"]]),]
+      #dat_filtered <- dat_filtered %>%
+      #  filter(!!sym(filter_list[["visit_type"]]) %in% !!sym(input$match_vtype))
     }
-    if (!is.null(input$key_term_daig_in) && input$key_term_daig_in != "") {
-      dat_filtered <- dat_filtered %>%
-        filter(str_detect(DIAGNOSIS, input$key_term_daig_in))
-    }
-    if (!is.null(input$key_term_daig_ex) && input$key_term_daig_ex != "") {
-      dat_filtered <- dat_filtered %>%
-        filter(str_detect(DIAGNOSIS, input$key_term_daig_ex, negate = TRUE))
-    }
-    if (!is.null(input$key_term_notes_in) && input$key_term_notes_in != "") {
-      dat_filtered <- dat_filtered %>%
-        filter(str_detect(DIAGNOSIS, input$key_term_notes_in))
-    }
-    if (!is.null(input$key_term_notes_ex) && input$key_term_notes_ex != "") {
-      dat_filtered <- dat_filtered %>%
-        filter(str_detect(DIAGNOSIS, input$key_term_notes_ex, negate = TRUE))
-    }
-    if (!is.null(input$dxdate_start) & !is.null(input$dxdate_stop)) {
-      dat_filtered <- dat_filtered %>%
-        filter(between(DIAGNOSIS_DATE, as.Date(input$dxdate_start), as.Date(input$dxdate_stop)))
-    }
+    #if (isTruthy(filter_list[["key_term_diag_in"]])) {
+    #  dat_filtered <- dat_filtered %>%
+    #    filter(str_detect(!!sym(match_col_id[["diag_notes_col"]]), !!sym(filter_list[["key_term_diag_in"]])))
+    #}
+    #if (isTruthy(filter_list[["key_term_diag_ex"]])) {
+    #  dat_filtered <- dat_filtered %>%
+    #    filter(str_detect(!!sym(match_col_id[["diag_notes_col"]]), !!sym(filter_list[["key_term_diag_ex"]]), negate = TRUE))
+    #}
+    #if (isTruthy(filter_list[["key_term_notes_in"]])) {
+    #  dat_filtered <- dat_filtered %>%
+    #    filter(str_detect(!!sym(match_col_id[["notes_col"]]), !!sym(filter_list[["key_term_notes_in"]])))
+    #}
+    #if (isTruthy(filter_list[["key_term_notes_ex"]])) {
+    #  dat_filtered <- dat_filtered %>%
+    #    filter(str_detect(!!sym(match_col_id[["notes_col"]]), !!sym(filter_list[["key_term_notes_ex"]]), negate = TRUE))
+    #}
+    #if (!is.null(filter_list[["diag_range_one"]]) & !is.null(filter_list[["diag_range_two"]])) {
+    #  dat_filtered <- dat_filtered %>%
+    #    filter(between(DIAGNOSIS_DATE, as.Date(filter_list[["diag_range_one"]]), as.Date(filter_list[["diag_range_two"]])))
+    #}
+    dat_filtered
     
   })
   
-  output$filtered_table <- renderReactable({
+  output$HIV_Neg_table_for_matching <- renderReactable({
     req(HIV_neg_df_filtered_to_match())
     df <- HIV_neg_df_filtered_to_match()
    
@@ -614,19 +705,19 @@ server <- function(input, output, session) {
         striped = TRUE,
         bordered = TRUE,
         showSortable = TRUE,
-        columns = list(
-          PRIMARY_LANGUAGE = colDef(name = "primary Language"),
-          NOTES = colDef(name = "Notes", minWidth = 200),
-          LOCATION = colDef(name = "Location"),
-          PT_LAST_NAME = colDef(name = "Last name"),
-          PT_FIRST_NAME = colDef(name = "First name"),
-          DIAGNOSIS = colDef(name = "Diagnosis", minWidth = 150),
-          DIAGNOSIS_DATE = colDef(name = "Diagnosis date"),
-          PT_ETHNICITY = colDef(name = "Ethnicity"),
-          Textbox38 = colDef(name = "Consent number", minWidth = 80),
-          Textbox41 = colDef(name = "Consent status"),
-          Textbox62 = colDef(name = "Consent version", minWidth = 120)
-        ),
+        #columns = list(
+        #  PRIMARY_LANGUAGE = colDef(name = "primary Language"),
+        #  NOTES = colDef(name = "Notes", minWidth = 200),
+        #  LOCATION = colDef(name = "Location"),
+        #  PT_LAST_NAME = colDef(name = "Last name"),
+        #  PT_FIRST_NAME = colDef(name = "First name"),
+        #  DIAGNOSIS = colDef(name = "Diagnosis", minWidth = 150),
+        #  DIAGNOSIS_DATE = colDef(name = "Diagnosis date"),
+        #  PT_ETHNICITY = colDef(name = "Ethnicity"),
+        #  Textbox38 = colDef(name = "Consent number", minWidth = 80),
+        #  Textbox41 = colDef(name = "Consent status"),
+        #  Textbox62 = colDef(name = "Consent version", minWidth = 120)
+        #),
         theme = reactableTheme(
           headerStyle = list(
             "&:hover[aria-sort]" = list(background = "hsl(0, 0%, 96%)"),
@@ -640,9 +731,30 @@ server <- function(input, output, session) {
   })
   
   # Display HIV neg table for matching patients
-  output$HIV_Neg_table_for_matching <- DT::renderDataTable({
-    req(match_df())
-    df <- match_df()
+  #output$HIV_Neg_table_for_matching <- DT::renderDataTable({
+  #  req(match_df())
+  #  df <- match_df()
+  #  DT::datatable(df,
+  #                escape = F,
+  #                class = "display nowrap",
+  #                extensions = 'ColReorder',
+  #                options = list(lengthMenu = c(5, 10, 20, 100, 1000),
+  #                               pageLength = 20,
+  #                               scrollX = T,
+  #                               target = "cell",
+  #                               colReorder = TRUE),
+  #                rownames = F
+  #  )
+  #})
+  
+  
+  ### Review Matches -----------------------------------------------------------
+  
+  
+  # Display input file
+  output$HIV_Pos_table_match_review <- DT::renderDataTable({
+    req(HIV_pos_df_patient_to_match())
+    df <- HIV_pos_df_patient_to_match()
     DT::datatable(df,
                   escape = F,
                   class = "display nowrap",
@@ -657,10 +769,140 @@ server <- function(input, output, session) {
   })
   
   
-  ### Review Matches -----------------------------------------------------------
-  
-  
+  # Display input file
+  output$HIV_Neg_table_match_review <- DT::renderDataTable({
+    req(HIV_neg_df_filtered_to_match())
+    df <- HIV_neg_df_filtered_to_match()
+    DT::datatable(df,
+                  escape = F,
+                  class = "display nowrap",
+                  extensions = 'ColReorder',
+                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
+                                 pageLength = 20,
+                                 scrollX = T,
+                                 target = "cell",
+                                 colReorder = TRUE),
+                  rownames = F
+    )
+  })
+
   ## Recognition ---------------------------------------------------------------
+  # Update screen csv file name
+  observe({
+    req(input$recognition_file_upload$datapath)
+    comment_file(input$recognition_file_upload$datapath)
+  })
+  # Read in input file
+  observe({
+    req(comment_file())
+    file <- comment_file()
+    ext <- tools::file_ext(file)
+    if (ext == "csv") {
+      df <- as.data.frame(readr::read_csv(file,col_names = TRUE))
+      comment_df(df)
+    } else if (ext %in% c("xlsx","xls")) {
+      df <- as.data.frame(readxl::read_excel(file))
+      comment_df(df)
+      
+    }
+  })
+  
+  # Populate Provider Name and NPI Dropdowns
+  observe({
+    req(comment_df())
+    updateSelectizeInput(session, "provider_nm", choices = unique(comment_df()$PROVIDER_NM))
+    updateSelectizeInput(session, "npi_num", choices = unique(comment_df()$NPI_NUM))
+  })
+  
+  # Display input file
+  output$commentdata <- DT::renderDataTable({
+    req(comment_df())
+    df <- comment_df()
+    DT::datatable(df,
+                  escape = F,
+                  class = "display nowrap",
+                  extensions = 'ColReorder',
+                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
+                                 pageLength = 20,
+                                 scrollX = T,
+                                 target = "cell",
+                                 colReorder = TRUE),
+                  rownames = F
+    )
+  })
+  
+  
+  # Reactive filtered data for the selected NPI
+  filtered <- reactive({
+    req(comment_df(), input$npi_num)
+    
+    comment_df() %>%
+      janitor::clean_names() %>%
+      filter(npi_num == input$npi_num) %>%
+      mutate(
+        last_nm = str_to_title(str_split_fixed(resource_name, " ", 2)[, 1]),
+        first_nm = str_to_title(str_split_fixed(resource_name, " ", 2)[, 2]),
+        check1 = grepl(last_nm, str_replace_all(response, " ", "")),
+        check2 = grepl(first_nm, str_replace_all(response, " ", ""))
+      ) %>%
+      filter(check1 | check2)
+  })
+  
+  
+  # Filter Comments by NPI (All Comments Tab)
+  output$filter_npi <- DT::renderDataTable({
+    req(filtered())
+    DT::datatable(filtered(),
+                  escape = F,
+                  class = "display nowrap",
+                  extensions = 'ColReorder',
+                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
+                                 pageLength = 20,
+                                 scrollX = T,
+                                 target = "cell",
+                                 colReorder = TRUE),
+                  rownames = F)
+  })
+  
+  
+  
+  # Provider-Specific Comments with Bigram Sentiment Analysis (Provider Specific Comments Tab)
+  output$bigram_sentiment <- DT::renderDataTable({
+    req(filtered())
+    filtered <- filtered()
+    
+    
+    # Perform bigram sentiment analysis
+    bigrams_separated <- filtered %>%
+      unnest_tokens(bigram, response, token = "ngrams", n = 2) %>%
+      filter(!is.na(bigram)) %>%
+      separate(bigram, c("word1", "word2"), sep = " ")
+    
+    negate_words <- c("not", "without", "no", "can't", "don't", "won't", "never")
+    
+    #save(list = ls(), file = "comment.RData", envir = environment())
+    
+    #afinn_lex <- lexicon_afinn(dir = getwd(),manual_download = TRUE)
+    
+    #bigram_sentiment <- bigrams_separated %>%
+    #  mutate(negated = if_else(word1 %in% negate_words, TRUE, FALSE)) %>%
+    #  left_join(get_sentiments("afinn"), by = c("word1" = "word")) %>%
+    #  rename(value1 = value) %>%
+    #  left_join(get_sentiments("afinn"), by = c("word2" = "word")) %>%
+    #  rename(value2 = value) %>%
+    #  mutate(value2 = if_else(negated, -value2, value2)) %>%
+    #  mutate(sentiment = rowSums(select(., value1, value2), na.rm = TRUE)) %>%
+    #  group_by(survey_id, question_text_latest) %>%
+    #  summarize(total_sentiment = sum(sentiment, na.rm = TRUE)) %>%
+    #  inner_join(filtered %>% select(resource_name, npi_num, survey_id, question_text_latest, response),
+    #             by = c("survey_id", "question_text_latest")) %>%
+    #  arrange(resource_name, desc(total_sentiment)) %>%
+    #  ungroup()
+    
+    bigram_sentiment <- bigrams_separated
+    
+    DT::datatable(bigram_sentiment)
+  })
   
   
 }
