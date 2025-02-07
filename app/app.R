@@ -94,13 +94,31 @@ ui <-
                                                          fluidRow(
                                                            column(6,
                                                                   numericInput("age_to_match","Age:",value = NULL),
-                                                                  selectizeInput("match_race","Race:", choices = NULL, selected = NULL, multiple = T),
-                                                                  selectizeInput("match_gender","Gender:", choices = NULL, selected = NULL, multiple = T)
+                                                                  selectizeInput("match_race","Race:", choices = c("American Indian, Aleutian, or Eskimo",
+                                                                                                                   "Asian Indian, Pakistani", #need better solution for race
+                                                                                                                   "Black",
+                                                                                                                   "Chamorran",
+                                                                                                                   "Chinese",
+                                                                                                                   "Filipino",
+                                                                                                                   "Hawaiian",
+                                                                                                                   "Japanese",
+                                                                                                                   "Kampuchean (including Khmer, Cambodian)",
+                                                                                                                   "Korean",
+                                                                                                                   "More Than One Race",
+                                                                                                                   "Other",
+                                                                                                                   "Other Asian including Asian and Oriental",
+                                                                                                                   "Pacific Islander",
+                                                                                                                   "Thai",
+                                                                                                                   "Tongan",
+                                                                                                                   "Unknown",
+                                                                                                                   "Vietnamese",
+                                                                                                                   "White"), selected = NULL, multiple = T),
+                                                                  selectizeInput("match_gender","Gender:", choices = c("Male", "Female"), selected = NULL, multiple = T)
                                                                   ),
                                                            column(6,
-                                                                  numericInput("age_range","+/- years:", value = 5, min = 0, step = 1),
-                                                                  selectizeInput("match_ethnicity","Ethnicity:", choices = NULL, selected = NULL, multiple = T),
-                                                                  selectizeInput("match_vtype","Visit Type:", choices = NULL, selected = NULL, multiple = T)
+                                                                  numericInput("age_range","+/- years:", value = 5, min = 1, step = 1),
+                                                                  selectizeInput("match_ethnicity","Ethnicity:", choices = c("Spanish; Hispanic", "Non-Spanish; non-Hispanic"), selected = NULL, multiple = T),
+                                                                  selectizeInput("match_vtype","Visit Type:", choices = c("NP", "NEP"), selected = NULL, multiple = T)
                                                                   )
                                                          ),
                                                          bslib::accordion(id = "term_filters", open = FALSE,
@@ -560,124 +578,84 @@ server <- function(input, output, session) {
   })
 
   HIV_neg_df_filtered_to_match <- reactive({
-    req(match_df(),patient_filter_settings(),match_columns_id(),input$hivpos_pat_to_match)
+    req(match_df(), patient_filter_settings(), match_columns_id())
+    
     df <- match_df()
     match_col_id <- match_columns_id()
-    filter_list <- patient_filter_settings()[[input$hivpos_pat_to_match]]
-    #save(list = ls(), file = "filtered_neg.RData", envir = environment())
+    filter_list <- patient_filter_settings()
     
-    dat_filtered <- df %>%
+    df_filtered <- df %>%
       mutate(
-        AGE = floor(!!sym(match_col_id[["age_col"]])),  # Round down age
-        DIAGNOSIS_DATE = as.Date(parse_date_time(!!sym(match_col_id[["diag_date_col"]]), orders = c("ymd", "mdy", "dmy"))),  # Convert to date
-        #DOB = as.Date(DOB, format = "%m/%d/%y"),
-        #DOB = ifelse(year(DOB) > 2024, DOB - years(100), DOB), # Adjust future years to the past
-        #DOB = as.Date(DOB)
+        AGE = floor(as.numeric(!!sym(match_col_id[["age_col"]]))),  
+        DIAGNOSIS_DATE = as.Date(parse_date_time(!!sym(match_col_id[["diag_date_col"]]), orders = c("ymd", "mdy", "dmy")))
       ) %>%
-      filter(!is.na(DIAGNOSIS_DATE)) %>%
-      filter(!!sym(match_col_id[["clinic_col"]]) %in% !!sym(match_col_id[["clinic_col"]])) %>%
+      #filter(!is.na(DIAGNOSIS_DATE)) %>% # Do we need this?
       filter(HIV == "No") %>%
-      filter(!Textbox41 %in% c("Declined", "Withdraw"))
-      #filter(PRIMARY_LANGUAGE %in% c("English", "Spanish")) %>%
-    if (!is.na(filter_list[["age_start"]]) & !is.na(filter_list[["age_stop"]])) {
-      dat_filtered <- dat_filtered %>%
-        filter(between(AGE, !!sym(filter_list[["age_start"]]), !!sym(filter_list[["age_stop"]])))
-    }
-    dat_filtered <- dat_filtered %>%
+      filter(!Textbox41 %in% c("Declined", "Withdraw")) %>%
+      filter(PRIMARY_LANGUAGE %in% c("English", "Spanish")) %>%
       distinct()
     
-    # Conditional filters
-    if (!is.null(filter_list[["race"]])) {
-      dat_filtered <- dat_filtered[which(dat_filtered[,match_col_id[["race_col"]]] %in% filter_list[["race"]]),]
-      #dat_filtered <- dat_filtered %>%
-      #  filter(!!sym(filter_list[["race"]]) %in% !!sym(input$match_race))
+    if (!is.null(input$age_to_match) && !is.na(input$age_to_match) && 
+        !is.null(input$age_range) && !is.na(input$age_range) &&
+        input$age_to_match != "" && input$age_range != "") {
+      
+      lower_bound <- as.numeric(input$age_to_match) - as.numeric(input$age_range)
+      upper_bound <- as.numeric(input$age_to_match) + as.numeric(input$age_range)
+      
+      print(paste("Age filter applied: Between", lower_bound, "and", upper_bound))  # Debugging log
+      
+      df_filtered <- df_filtered %>%
+        filter(!is.na(AGE)) %>%  # Ensure AGE is not NA before filtering
+        filter(between(AGE, lower_bound, upper_bound))
     }
-    if (!is.null(filter_list[["ethnicity"]])) {
-      dat_filtered <- dat_filtered[which(dat_filtered[,match_col_id[["ethnicity_col"]]] %in% filter_list[["ethnicity"]]),]
-      #dat_filtered <- dat_filtered %>%
-      #  filter(!!sym(filter_list[["ethnicity"]]) %in% !!sym(input$match_ethnicity))
-    }
-    if (!is.null(filter_list[["gender"]])) {
-      dat_filtered <- dat_filtered[which(dat_filtered[,match_col_id[["gender_col"]]] %in% filter_list[["gender"]]),]
-      #dat_filtered <- dat_filtered %>%
-      #  filter(!!sym(filter_list[["gender"]]) %in% !!sym(input$match_gender))
-    }
-    if (!is.null(filter_list[["visit_type"]])) {
-      dat_filtered <- dat_filtered[which(dat_filtered[,match_col_id[["visit_col"]]] %in% filter_list[["visit_type"]]),]
-      #dat_filtered <- dat_filtered %>%
-      #  filter(!!sym(filter_list[["visit_type"]]) %in% !!sym(input$match_vtype))
-    }
-    #if (isTruthy(filter_list[["key_term_diag_in"]])) {
-    #  dat_filtered <- dat_filtered %>%
-    #    filter(str_detect(!!sym(match_col_id[["diag_notes_col"]]), !!sym(filter_list[["key_term_diag_in"]])))
-    #}
-    #if (isTruthy(filter_list[["key_term_diag_ex"]])) {
-    #  dat_filtered <- dat_filtered %>%
-    #    filter(str_detect(!!sym(match_col_id[["diag_notes_col"]]), !!sym(filter_list[["key_term_diag_ex"]]), negate = TRUE))
-    #}
-    #if (isTruthy(filter_list[["key_term_notes_in"]])) {
-    #  dat_filtered <- dat_filtered %>%
-    #    filter(str_detect(!!sym(match_col_id[["notes_col"]]), !!sym(filter_list[["key_term_notes_in"]])))
-    #}
-    #if (isTruthy(filter_list[["key_term_notes_ex"]])) {
-    #  dat_filtered <- dat_filtered %>%
-    #    filter(str_detect(!!sym(match_col_id[["notes_col"]]), !!sym(filter_list[["key_term_notes_ex"]]), negate = TRUE))
-    #}
-    #if (!is.null(filter_list[["diag_range_one"]]) & !is.null(filter_list[["diag_range_two"]])) {
-    #  dat_filtered <- dat_filtered %>%
-    #    filter(between(DIAGNOSIS_DATE, as.Date(filter_list[["diag_range_one"]]), as.Date(filter_list[["diag_range_two"]])))
-    #}
-    dat_filtered
     
+    # Apply conditional filters
+    if (!is.null(input$match_clinic) && length(input$match_clinic) > 0) {
+      df_filtered <- df_filtered %>% filter(LOCATION %in% input$match_clinic)
+    }
+    if (!is.null(input$match_race) && length(input$match_race) > 0) {
+      df_filtered <- df_filtered %>%
+        filter(PT_RACE %in% input$match_race)
+    }
+    if (!is.null(input$match_ethnicity) && length(input$match_ethnicity) > 0) {
+      df_filtered <- df_filtered %>%
+        filter(PT_ETHNICITY %in% input$match_ethnicity)
+    }
+    if (!is.null(input$match_gender) && length(input$match_gender) > 0) {
+      df_filtered <- df_filtered %>%
+        filter(PT_GENDER %in% input$match_gender)
+    }
+    if (!is.null(input$match_vtype) && length(input$match_vtype) > 0) {
+      df_filtered <- df_filtered %>%
+        filter(VTYPE %in% input$match_vtype)
+    }
+    if (!is.null(input$key_term_daig_in) && input$key_term_daig_in != "") {
+      df_filtered <- df_filtered %>%
+        filter(str_detect(DIAGNOSIS, regex(input$key_term_daig_in, ignore_case = TRUE)))
+    }
+    if (!is.null(input$key_term_daig_ex) && input$key_term_daig_ex != "") {
+      df_filtered <- df_filtered %>%
+        filter(!str_detect(DIAGNOSIS, regex(input$key_term_daig_ex, ignore_case = TRUE)))
+    }
+    if (!is.null(input$key_term_notes_in) && input$key_term_notes_in != "") {
+      df_filtered <- df_filtered %>%
+        filter(str_detect(NOTES, regex(input$key_term_notes_in, ignore_case = TRUE)))
+    }
+    if (!is.null(input$key_term_notes_ex) && input$key_term_notes_ex != "") {
+      df_filtered <- df_filtered %>%
+        filter(!str_detect(NOTES, regex(input$key_term_notes_ex, ignore_case = TRUE)))
+    }
+    if (!is.null(input$dxdate_start) && !is.null(input$dxdate_stop)) {
+      df_filtered <- df_filtered %>%
+        filter(between(DIAGNOSIS_DATE, as.Date(input$dxdate_start), as.Date(input$dxdate_stop)))
+    }
+    
+    return(df_filtered)
   })
-  
-  # output$HIV_Neg_table_for_matching <- renderReactable({
-  #   req(HIV_neg_df_filtered_to_match())
-  #   df <- HIV_neg_df_filtered_to_match()
-  #  
-  #   
-  #   
-  #   df %>%
-  #     #select(any_of(Variable_Name)) %>%
-  #     #arrange(PT_LAST_NAME) %>%  # Arrange by last name
-  #     reactable(
-  #       sortable = TRUE,
-  #       filterable = TRUE,
-  #       compact = TRUE,
-  #       resizable = TRUE,
-  #       striped = TRUE,
-  #       bordered = TRUE,
-  #       showSortable = TRUE,
-  #       #columns = list(
-  #       #  PRIMARY_LANGUAGE = colDef(name = "primary Language"),
-  #       #  NOTES = colDef(name = "Notes", minWidth = 200),
-  #       #  LOCATION = colDef(name = "Location"),
-  #       #  PT_LAST_NAME = colDef(name = "Last name"),
-  #       #  PT_FIRST_NAME = colDef(name = "First name"),
-  #       #  DIAGNOSIS = colDef(name = "Diagnosis", minWidth = 150),
-  #       #  DIAGNOSIS_DATE = colDef(name = "Diagnosis date"),
-  #       #  PT_ETHNICITY = colDef(name = "Ethnicity"),
-  #       #  Textbox38 = colDef(name = "Consent number", minWidth = 80),
-  #       #  Textbox41 = colDef(name = "Consent status"),
-  #       #  Textbox62 = colDef(name = "Consent version", minWidth = 120)
-  #       #),
-  #       theme = reactableTheme(
-  #         headerStyle = list(
-  #           "&:hover[aria-sort]" = list(background = "hsl(0, 0%, 96%)"),
-  #           "&[aria-sort='ascending'], &[aria-sort='descending']" = list(background = "hsl(0, 0%, 96%)"),
-  #           backgroundColor = "lightblue"),
-  #         borderColor = "#dfe2e9",
-  #         stripedColor = "#f6f8fa",
-  #         cellPadding = "8px 12px"
-  #       )
-  #     )
-  # })
   
     output$filtered_table <- renderReactable({
     req(HIV_neg_df_filtered_to_match())
     df <- HIV_neg_df_filtered_to_match()
-    
-    
     
     df %>%
       #select(any_of(Variable_Name)) %>%
@@ -716,8 +694,9 @@ server <- function(input, output, session) {
   })
   # Display HIV neg table for matching patients
   output$HIV_Neg_table_for_matching <- DT::renderDataTable({
-   req(match_df())
-   df <- match_df()
+    req(HIV_neg_df_filtered_to_match())  # Use the filtered dataset
+    df <- HIV_neg_df_filtered_to_match()
+    print(paste("Final dataset rows:", nrow(df)))  # Debugging
    DT::datatable(df,
                  escape = F,
                  class = "display nowrap",
