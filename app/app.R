@@ -132,10 +132,9 @@ ui <-
                                                                     h3(tags$b("HIV Positive Patient to Match",style = "font-size: 22px;")),
                                                                     DT::dataTableOutput("HIV_Pos_table_for_matching"),
                                                                     hr(),
-
-                                                                    h3(tags$b("HIV Negative Patients for Matching")),
-                                                                    reactableOutput("HIV_Neg_table_for_matching"),
-                                                                    #DT::dataTableOutput("HIV_Neg_table_for_matching"),
+                                                                    h3(tags$b("HIV Negative Patients for Matching",style = "font-size: 22px;")),
+                                                                    #reactableOutput("HIV_Neg_table_for_matching"),
+                                                                    DT::dataTableOutput("HIV_Neg_table_for_matching"),
                                                                     value = 1
                                                                     ),
                                                            tabPanel("Review Matches",
@@ -156,65 +155,7 @@ ui <-
                                       )
                                     )
                     ),
-                    ## Recognition ---------------------------------------------
-                    shiny::tabPanel("Recognition",
-                                    icon = icon("award"),
-                                    shiny::sidebarLayout(
-                                      shiny::sidebarPanel(
-                                        width = 3,
-                                        h4("Load Comment Data"),
-                                        shiny::fileInput("recognition_file_upload","Upload Comment Data"),
-                                        #conditionalPanel(condition = "input.screening_panel == '1'",
-                                        hr(),
-                                        h4("Filter Providers"),
-                                        tags$head(
-                                          tags$style(HTML('.selectize-input {
-                                                                max-height: 82px;
-                                                                overflow-y: auto;}'
-                                          )
-                                          )
-                                        ),
-                                        selectizeInput("provider_nm","Provider Name:", choices = NULL, selected = 1),
-                                        selectizeInput("npi_num","Provider NPI:", choices = NULL, selected = 1)
-                                        # Filters
-                                        # )
-                                      ),
-                                      shiny::mainPanel(
-                                        shiny::tabsetPanel(id = "recognition_panel",
-                                                           tabPanel("Comment Data",
-                                                                    p(),
-                                                                    DT::dataTableOutput("commentdata"),
-                                                                    value = 1
-                                                           ),
-                                                           tabPanel("Provider Specific Comments",
-                                                                    p(),
-                                                                    DT::dataTableOutput("bigram_sentiment"),
-                                                                    value = 2
-                                                           ),
-                                                           tabPanel("All Comments",
-                                                                    p(),
-                                                                    DT::dataTableOutput("filter_npi"),
-                                                                    value = 3
-                                                           )
-                                        )
-                                      )
-                                    )
-                    ),
-                    
-                    
-                    
-                    #shiny::tabPanel("Recognition",
-                    #                shiny::sidebarLayout(
-                    #                  shiny::sidebarPanel(
-                    #                    width = 3,
-                    #                    
-                    #                  ),
-                    #                  shiny::mainPanel(
-                    #                    
-                    #                  )
-                    #                )
-                    #),
-                    
+
                     ## Homepage ------------------------------------------------
                     shiny::tabPanel("About",
                                     # Explain SMART acronym what it can be used for - any logos
@@ -241,6 +182,8 @@ server <- function(input, output, session) {
   
   screen_file <- reactiveVal(NULL)
   screen_df <- reactiveVal(NULL)
+  screen_df_hivpos <- reactiveVal(NULL)
+  screen_df_hivneg <- reactiveVal(NULL)
   
   match_file <- reactiveVal()
   match_df <- reactiveVal()
@@ -253,7 +196,7 @@ server <- function(input, output, session) {
   comment_df <- reactiveVal(NULL)
   comment_file <- reactiveVal(NULL)
   
-  # Read in know HIV Neg file
+  # Read in known HIV Neg file
   observe({
     req(backend_known_hivneg_file())
     file <- backend_known_hivneg_file()
@@ -688,10 +631,52 @@ server <- function(input, output, session) {
     
   })
   
-  output$HIV_Neg_table_for_matching <- renderReactable({
+  # output$HIV_Neg_table_for_matching <- renderReactable({
+  #   req(HIV_neg_df_filtered_to_match())
+  #   df <- HIV_neg_df_filtered_to_match()
+  #  
+  #   
+  #   
+  #   df %>%
+  #     #select(any_of(Variable_Name)) %>%
+  #     #arrange(PT_LAST_NAME) %>%  # Arrange by last name
+  #     reactable(
+  #       sortable = TRUE,
+  #       filterable = TRUE,
+  #       compact = TRUE,
+  #       resizable = TRUE,
+  #       striped = TRUE,
+  #       bordered = TRUE,
+  #       showSortable = TRUE,
+  #       #columns = list(
+  #       #  PRIMARY_LANGUAGE = colDef(name = "primary Language"),
+  #       #  NOTES = colDef(name = "Notes", minWidth = 200),
+  #       #  LOCATION = colDef(name = "Location"),
+  #       #  PT_LAST_NAME = colDef(name = "Last name"),
+  #       #  PT_FIRST_NAME = colDef(name = "First name"),
+  #       #  DIAGNOSIS = colDef(name = "Diagnosis", minWidth = 150),
+  #       #  DIAGNOSIS_DATE = colDef(name = "Diagnosis date"),
+  #       #  PT_ETHNICITY = colDef(name = "Ethnicity"),
+  #       #  Textbox38 = colDef(name = "Consent number", minWidth = 80),
+  #       #  Textbox41 = colDef(name = "Consent status"),
+  #       #  Textbox62 = colDef(name = "Consent version", minWidth = 120)
+  #       #),
+  #       theme = reactableTheme(
+  #         headerStyle = list(
+  #           "&:hover[aria-sort]" = list(background = "hsl(0, 0%, 96%)"),
+  #           "&[aria-sort='ascending'], &[aria-sort='descending']" = list(background = "hsl(0, 0%, 96%)"),
+  #           backgroundColor = "lightblue"),
+  #         borderColor = "#dfe2e9",
+  #         stripedColor = "#f6f8fa",
+  #         cellPadding = "8px 12px"
+  #       )
+  #     )
+  # })
+  
+    output$filtered_table <- renderReactable({
     req(HIV_neg_df_filtered_to_match())
     df <- HIV_neg_df_filtered_to_match()
-   
+    
     
     
     df %>%
@@ -705,19 +690,19 @@ server <- function(input, output, session) {
         striped = TRUE,
         bordered = TRUE,
         showSortable = TRUE,
-        #columns = list(
-        #  PRIMARY_LANGUAGE = colDef(name = "primary Language"),
-        #  NOTES = colDef(name = "Notes", minWidth = 200),
-        #  LOCATION = colDef(name = "Location"),
-        #  PT_LAST_NAME = colDef(name = "Last name"),
-        #  PT_FIRST_NAME = colDef(name = "First name"),
-        #  DIAGNOSIS = colDef(name = "Diagnosis", minWidth = 150),
-        #  DIAGNOSIS_DATE = colDef(name = "Diagnosis date"),
-        #  PT_ETHNICITY = colDef(name = "Ethnicity"),
-        #  Textbox38 = colDef(name = "Consent number", minWidth = 80),
-        #  Textbox41 = colDef(name = "Consent status"),
-        #  Textbox62 = colDef(name = "Consent version", minWidth = 120)
-        #),
+        columns = list(
+          PRIMARY_LANGUAGE = colDef(name = "primary Language"),
+          NOTES = colDef(name = "Notes", minWidth = 200),
+          LOCATION = colDef(name = "Location"),
+          PT_LAST_NAME = colDef(name = "Last name"),
+          PT_FIRST_NAME = colDef(name = "First name"),
+          DIAGNOSIS = colDef(name = "Diagnosis", minWidth = 150),
+          DIAGNOSIS_DATE = colDef(name = "Diagnosis date"),
+          PT_ETHNICITY = colDef(name = "Ethnicity"),
+          Textbox38 = colDef(name = "Consent number", minWidth = 80),
+          Textbox41 = colDef(name = "Consent status"),
+          Textbox62 = colDef(name = "Consent version", minWidth = 120)
+        ),
         theme = reactableTheme(
           headerStyle = list(
             "&:hover[aria-sort]" = list(background = "hsl(0, 0%, 96%)"),
@@ -729,23 +714,22 @@ server <- function(input, output, session) {
         )
       )
   })
-  
   # Display HIV neg table for matching patients
-  #output$HIV_Neg_table_for_matching <- DT::renderDataTable({
-  #  req(match_df())
-  #  df <- match_df()
-  #  DT::datatable(df,
-  #                escape = F,
-  #                class = "display nowrap",
-  #                extensions = 'ColReorder',
-  #                options = list(lengthMenu = c(5, 10, 20, 100, 1000),
-  #                               pageLength = 20,
-  #                               scrollX = T,
-  #                               target = "cell",
-  #                               colReorder = TRUE),
-  #                rownames = F
-  #  )
-  #})
+  output$HIV_Neg_table_for_matching <- DT::renderDataTable({
+   req(match_df())
+   df <- match_df()
+   DT::datatable(df,
+                 escape = F,
+                 class = "display nowrap",
+                 extensions = 'ColReorder',
+                 options = list(lengthMenu = c(5, 10, 20, 100, 1000),
+                                pageLength = 20,
+                                scrollX = T,
+                                target = "cell",
+                                colReorder = TRUE),
+                 rownames = F
+   )
+  })
   
   
   ### Review Matches -----------------------------------------------------------
@@ -768,7 +752,6 @@ server <- function(input, output, session) {
     )
   })
   
-  
   # Display input file
   output$HIV_Neg_table_match_review <- DT::renderDataTable({
     req(HIV_neg_df_filtered_to_match())
@@ -786,125 +769,6 @@ server <- function(input, output, session) {
     )
   })
 
-  ## Recognition ---------------------------------------------------------------
-  # Update screen csv file name
-  observe({
-    req(input$recognition_file_upload$datapath)
-    comment_file(input$recognition_file_upload$datapath)
-  })
-  # Read in input file
-  observe({
-    req(comment_file())
-    file <- comment_file()
-    ext <- tools::file_ext(file)
-    if (ext == "csv") {
-      df <- as.data.frame(readr::read_csv(file,col_names = TRUE))
-      comment_df(df)
-    } else if (ext %in% c("xlsx","xls")) {
-      df <- as.data.frame(readxl::read_excel(file))
-      comment_df(df)
-      
-    }
-  })
-  
-  # Populate Provider Name and NPI Dropdowns
-  observe({
-    req(comment_df())
-    updateSelectizeInput(session, "provider_nm", choices = unique(comment_df()$PROVIDER_NM))
-    updateSelectizeInput(session, "npi_num", choices = unique(comment_df()$NPI_NUM))
-  })
-  
-  # Display input file
-  output$commentdata <- DT::renderDataTable({
-    req(comment_df())
-    df <- comment_df()
-    DT::datatable(df,
-                  escape = F,
-                  class = "display nowrap",
-                  extensions = 'ColReorder',
-                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
-                                 pageLength = 20,
-                                 scrollX = T,
-                                 target = "cell",
-                                 colReorder = TRUE),
-                  rownames = F
-    )
-  })
-  
-  
-  # Reactive filtered data for the selected NPI
-  filtered <- reactive({
-    req(comment_df(), input$npi_num)
-    
-    comment_df() %>%
-      janitor::clean_names() %>%
-      filter(npi_num == input$npi_num) %>%
-      mutate(
-        last_nm = str_to_title(str_split_fixed(resource_name, " ", 2)[, 1]),
-        first_nm = str_to_title(str_split_fixed(resource_name, " ", 2)[, 2]),
-        check1 = grepl(last_nm, str_replace_all(response, " ", "")),
-        check2 = grepl(first_nm, str_replace_all(response, " ", ""))
-      ) %>%
-      filter(check1 | check2)
-  })
-  
-  
-  # Filter Comments by NPI (All Comments Tab)
-  output$filter_npi <- DT::renderDataTable({
-    req(filtered())
-    DT::datatable(filtered(),
-                  escape = F,
-                  class = "display nowrap",
-                  extensions = 'ColReorder',
-                  options = list(lengthMenu = c(5, 10, 20, 100, 1000),
-                                 pageLength = 20,
-                                 scrollX = T,
-                                 target = "cell",
-                                 colReorder = TRUE),
-                  rownames = F)
-  })
-  
-  
-  
-  # Provider-Specific Comments with Bigram Sentiment Analysis (Provider Specific Comments Tab)
-  output$bigram_sentiment <- DT::renderDataTable({
-    req(filtered())
-    filtered <- filtered()
-    
-    
-    # Perform bigram sentiment analysis
-    bigrams_separated <- filtered %>%
-      unnest_tokens(bigram, response, token = "ngrams", n = 2) %>%
-      filter(!is.na(bigram)) %>%
-      separate(bigram, c("word1", "word2"), sep = " ")
-    
-    negate_words <- c("not", "without", "no", "can't", "don't", "won't", "never")
-    
-    #save(list = ls(), file = "comment.RData", envir = environment())
-    
-    #afinn_lex <- lexicon_afinn(dir = getwd(),manual_download = TRUE)
-    
-    #bigram_sentiment <- bigrams_separated %>%
-    #  mutate(negated = if_else(word1 %in% negate_words, TRUE, FALSE)) %>%
-    #  left_join(get_sentiments("afinn"), by = c("word1" = "word")) %>%
-    #  rename(value1 = value) %>%
-    #  left_join(get_sentiments("afinn"), by = c("word2" = "word")) %>%
-    #  rename(value2 = value) %>%
-    #  mutate(value2 = if_else(negated, -value2, value2)) %>%
-    #  mutate(sentiment = rowSums(select(., value1, value2), na.rm = TRUE)) %>%
-    #  group_by(survey_id, question_text_latest) %>%
-    #  summarize(total_sentiment = sum(sentiment, na.rm = TRUE)) %>%
-    #  inner_join(filtered %>% select(resource_name, npi_num, survey_id, question_text_latest, response),
-    #             by = c("survey_id", "question_text_latest")) %>%
-    #  arrange(resource_name, desc(total_sentiment)) %>%
-    #  ungroup()
-    
-    bigram_sentiment <- bigrams_separated
-    
-    DT::datatable(bigram_sentiment)
-  })
-  
-  
 }
 
 
