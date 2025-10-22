@@ -125,7 +125,7 @@ library(reactable)
 ```{r}
 dat <- 
   read_csv(
-    here("Data", params$data),
+    here("example_data", params$data),
     skip = 3,
   ) %>% 
   ## need to remove extra "tables" at the end of the file
@@ -367,6 +367,6 @@ out_file_name <- paste0("MRN-", params$out_file_mrn, "_", date_range, ".csv")
 **File name:** *`r out_file_name`*
 
 ```{r write_csv}
-write_csv(dat_filtered, here("Matches", out_file_name))
+write_csv(dat_filtered, here("example_data/ex_Matches", out_file_name))
 ```
 

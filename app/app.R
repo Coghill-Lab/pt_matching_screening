@@ -118,7 +118,7 @@ ui <-
                                                            column(6,
                                                                   numericInput("age_range","+/- years:", value = 5, min = 1, step = 1),
                                                                   selectizeInput("match_ethnicity","Ethnicity:", choices = c("Spanish; Hispanic", "Non-Spanish; non-Hispanic"), selected = NULL, multiple = T),
-                                                                  selectizeInput("match_vtype","Visit Type:", choices = c("NP", "NEP"), selected = NULL, multiple = T)
+                                                                  selectizeInput("match_vtype","Visit Type:", choices = c("EP", "NEP"), selected = NULL, multiple = T)
                                                                   )
                                                          ),
                                                          bslib::accordion(id = "term_filters", open = FALSE,
@@ -186,6 +186,7 @@ ui <-
 # Server -----------------------------------------------------------------------
 
 server <- function(input, output, session) {
+  options(shiny.maxRequestSize = 100*1024^2)  # Set to 100MB
   
   ## Reactive Vals -------------------------------------------------------------
   backend_known_hivneg_file <- reactiveVal(NULL)
